@@ -1,0 +1,1 @@
+{"id":"create-pipeline","name":"Create Pipeline","description":"Create an Azure DevOps YAML pipeline","executor":"powershell","inputs":["repository","pipelineName"],"outputs":["pipelineId"]}

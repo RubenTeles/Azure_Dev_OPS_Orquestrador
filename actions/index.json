@@ -1,0 +1,1 @@
+[{"id":"create-pipeline","name":"Create Pipeline","description":"Create an Azure DevOps YAML pipeline","executor":"powershell","inputs":["repository","pipelineName"],"outputs":["pipelineId"]},{"id":"copy-template","name":"Copy Template","description":"Copy a reusable template into a repository","executor":"powershell","inputs":["template","destination"],"outputs":["files"]}]

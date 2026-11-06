@@ -1,0 +1,7 @@
+import { Box, Button, Divider, List, ListItemButton, ListItemIcon, ListItemText, Typography } from '@mui/material';
+import type { OverridableComponent } from '@mui/material/OverridableComponent';
+import type { SvgIconTypeMap } from '@mui/material/SvgIcon';
+import DashboardIcon from '@mui/icons-material/Dashboard'; import AccountTreeIcon from '@mui/icons-material/AccountTree'; import StorageIcon from '@mui/icons-material/Storage'; import SettingsIcon from '@mui/icons-material/Settings';
+type MenuIcon = OverridableComponent<SvgIconTypeMap>;
+const menu: Array<[string, string, MenuIcon]> = [['dashboard','Dashboard',DashboardIcon],['designer','Workflow Designer',AccountTreeIcon],['repositories','Repositories',StorageIcon],['settings','Settings',SettingsIcon]];
+export function Sidebar({page,onPage}:{page:string;onPage:(p:string)=>void}){return <Box className="sidebar"><Box sx={{p:2.5}}><Typography variant="h6" fontWeight={800}>? DevOps Studio</Typography><Typography variant="caption" color="text.secondary">Automation workspace</Typography></Box><Divider/><List sx={{p:1}}>{menu.map(([id,label,Icon])=><ListItemButton key={id} selected={page===id} onClick={()=>onPage(id)}><ListItemIcon><Icon fontSize="small"/></ListItemIcon><ListItemText primary={label}/></ListItemButton>)}</List><Box sx={{position:'absolute',bottom:20,p:2,width:250}}><Button fullWidth variant="outlined" size="small">Azure DevOps: Connected</Button></Box></Box>}
