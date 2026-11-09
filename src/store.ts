@@ -6,7 +6,8 @@ import {
   type Connection,
   type Edge,
   type OnNodesChange,
-  type OnEdgesChange
+  type OnEdgesChange,
+  type Node
 } from '@xyflow/react';
 import type {
   AppNode,
@@ -16,7 +17,9 @@ import type {
   AzureProject,
   AzurePipeline,
   VariableGroup,
-  Environment
+  Environment,
+  TopologyGroup,
+  SavedProjectTopology
 } from './types';
 import {
   DEFAULT_GET_POWERSHELL_SCRIPT,
@@ -26,17 +29,17 @@ import {
   MOCK_PIPELINES,
   MOCK_DASHBOARD_METRICS,
   MOCK_VARIABLE_GROUPS,
-  MOCK_ENVIRONMENTS
+  MOCK_ENVIRONMENTS,
+  MOCK_TOPOLOGY_GROUPS
 } from './mockData';
 
 const SETTINGS_STORAGE_KEY = 'devops_studio_settings';
+const SAVED_TOPOLOGY_STORAGE_KEY = 'devops_studio_saved_topologies';
 
 const initialSettings: SettingsData = (() => {
   try {
     const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (saved) {
-      return JSON.parse(saved);
-    }
+    if (saved) return JSON.parse(saved);
   } catch {
     // fallback
   }
@@ -48,6 +51,16 @@ const initialSettings: SettingsData = (() => {
     isConnected: false,
     customGetScript: DEFAULT_GET_POWERSHELL_SCRIPT
   };
+})();
+
+const initialSavedTopologies: Record<string, SavedProjectTopology> = (() => {
+  try {
+    const saved = localStorage.getItem(SAVED_TOPOLOGY_STORAGE_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch {
+    // fallback
+  }
+  return {};
 })();
 
 export const INITIAL_BATCH_WORKFLOW_NODES: AppNode[] = [
@@ -114,6 +127,8 @@ interface StudioState {
   pipelines: AzurePipeline[];
   variableGroups: Record<string, VariableGroup[]>;
   environments: Record<string, Environment[]>;
+  topologyGroups: Record<string, TopologyGroup[]>;
+  savedTopologies: Record<string, SavedProjectTopology>;
   dashboard: DashboardData;
   nodes: AppNode[];
   edges: Edge[];
@@ -139,6 +154,22 @@ interface StudioState {
   loadSimpleBatchWorkflow: () => void;
   executeWorkflow: () => Promise<void>;
   runGetScript: (customScript?: string) => Promise<void>;
+
+  // Ações para Topologia, Grupos e Conexões
+  addTopologyGroup: (projectId: string, group: { name: string; description?: string; color: string; repository?: string }) => TopologyGroup;
+  updateTopologyGroup: (groupId: string, data: Partial<TopologyGroup>) => void;
+  deleteTopologyGroup: (groupId: string) => void;
+  
+  connectVariableGroupToPipeline: (vgId: string, pipelineId: string) => void;
+  disconnectVariableGroupFromPipeline: (vgId: string, pipelineId: string) => void;
+  connectPipelineToEnvironment: (pipelineId: string, envId: string) => void;
+  disconnectPipelineFromEnvironment: (pipelineId: string, envId: string) => void;
+
+  updatePipelineAgentNotes: (pipelineId: string, notes: string) => void;
+  updateEnvironmentTitleColor: (projectId: string, envId: string, color: string) => void;
+
+  saveProjectTopology: (projectId: string, nodes: Node[], edges: Edge[]) => void;
+  resetProjectTopologyToDefault: (projectId: string) => void;
 }
 
 export const useStudioStore = create<StudioState>((set, get) => ({
@@ -149,6 +180,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   pipelines: MOCK_PIPELINES,
   variableGroups: MOCK_VARIABLE_GROUPS,
   environments: MOCK_ENVIRONMENTS,
+  topologyGroups: MOCK_TOPOLOGY_GROUPS,
+  savedTopologies: initialSavedTopologies,
   dashboard: MOCK_DASHBOARD_METRICS,
   nodes: INITIAL_BATCH_WORKFLOW_NODES,
   edges: INITIAL_BATCH_WORKFLOW_EDGES,
@@ -227,6 +260,182 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   clearLogs: () => set({ logs: [] }),
 
+  // Topologia: Grupos
+  addTopologyGroup: (projectId, groupData) => {
+    const newGroup: TopologyGroup = {
+      id: `group-${Date.now()}`,
+      projectId,
+      ...groupData
+    };
+    set((state) => {
+      const currentList = state.topologyGroups[projectId] || [];
+      const updated = {
+        ...state.topologyGroups,
+        [projectId]: [...currentList, newGroup]
+      };
+      return { topologyGroups: updated };
+    });
+    get().addLog(`[GRUPO CRIADO] Novo grupo "${newGroup.name}" adicionado ao projeto.`);
+    return newGroup;
+  },
+
+  updateTopologyGroup: (groupId, data) => {
+    set((state) => {
+      const updated = { ...state.topologyGroups };
+      Object.keys(updated).forEach((pId) => {
+        updated[pId] = updated[pId].map((g) => (g.id === groupId ? { ...g, ...data } : g));
+      });
+      return { topologyGroups: updated };
+    });
+  },
+
+  deleteTopologyGroup: (groupId) => {
+    set((state) => {
+      const updated = { ...state.topologyGroups };
+      Object.keys(updated).forEach((pId) => {
+        updated[pId] = updated[pId].filter((g) => g.id !== groupId);
+      });
+      return { topologyGroups: updated };
+    });
+    get().addLog(`[GRUPO REMOVIDO] Grupo removido da topologia.`);
+  },
+
+  // Conexões: Variable Group <-> Pipeline
+  connectVariableGroupToPipeline: (vgId, pipelineId) => {
+    set((state) => ({
+      pipelines: state.pipelines.map((p) => {
+        if (p.id === pipelineId && !p.variableGroupIds.includes(vgId)) {
+          return {
+            ...p,
+            variableGroupIds: [...p.variableGroupIds, vgId]
+          };
+        }
+        return p;
+      })
+    }));
+    const pipe = get().pipelines.find((p) => p.id === pipelineId);
+    get().addLog(`[CONEXÃO CRIADA] Variable Group vinculado à Pipeline "${pipe?.name}".`);
+  },
+
+  disconnectVariableGroupFromPipeline: (vgId, pipelineId) => {
+    set((state) => ({
+      pipelines: state.pipelines.map((p) => {
+        if (p.id === pipelineId) {
+          return {
+            ...p,
+            variableGroupIds: p.variableGroupIds.filter((id) => id !== vgId)
+          };
+        }
+        return p;
+      })
+    }));
+    const pipe = get().pipelines.find((p) => p.id === pipelineId);
+    get().addLog(`[CONEXÃO REMOVIDA] Desvinculado Variable Group da Pipeline "${pipe?.name}".`);
+  },
+
+  // Conexões: Pipeline <-> Environment
+  connectPipelineToEnvironment: (pipelineId, envId) => {
+    set((state) => ({
+      pipelines: state.pipelines.map((p) => {
+        if (p.id === pipelineId && !p.environmentIds.includes(envId)) {
+          return {
+            ...p,
+            environmentIds: [...p.environmentIds, envId]
+          };
+        }
+        return p;
+      })
+    }));
+    const pipe = get().pipelines.find((p) => p.id === pipelineId);
+    get().addLog(`[CONEXÃO CRIADA] Environment vinculado à Pipeline "${pipe?.name}".`);
+  },
+
+  disconnectPipelineFromEnvironment: (pipelineId, envId) => {
+    set((state) => ({
+      pipelines: state.pipelines.map((p) => {
+        if (p.id === pipelineId) {
+          return {
+            ...p,
+            environmentIds: p.environmentIds.filter((id) => id !== envId)
+          };
+        }
+        return p;
+      })
+    }));
+    const pipe = get().pipelines.find((p) => p.id === pipelineId);
+    get().addLog(`[CONEXÃO REMOVIDA] Desvinculado Environment da Pipeline "${pipe?.name}".`);
+  },
+
+  // Agentes & Notas
+  updatePipelineAgentNotes: (pipelineId, notes) => {
+    set((state) => ({
+      pipelines: state.pipelines.map((p) => {
+        if (p.id === pipelineId) {
+          return {
+            ...p,
+            agent: {
+              ...p.agent,
+              notes
+            }
+          };
+        }
+        return p;
+      })
+    }));
+    get().addLog(`[AGENTE] Notas do agente atualizadas com sucesso.`);
+  },
+
+  // Environments: Cor do Título
+  updateEnvironmentTitleColor: (projectId, envId, color) => {
+    set((state) => {
+      const currentList = state.environments[projectId] || [];
+      const updated = {
+        ...state.environments,
+        [projectId]: currentList.map((env) => (env.id === envId ? { ...env, titleColor: color } : env))
+      };
+      return { environments: updated };
+    });
+    get().addLog(`[ENVIRONMENT] Cor do título personalizada.`);
+  },
+
+  // Persistência da Topologia do Projeto
+  saveProjectTopology: (projectId, nodes, edges) => {
+    const groups = get().topologyGroups[projectId] || [];
+    const savedTopology: SavedProjectTopology = {
+      nodes,
+      edges,
+      groups,
+      savedAt: new Date().toISOString()
+    };
+    set((state) => {
+      const updated = {
+        ...state.savedTopologies,
+        [projectId]: savedTopology
+      };
+      try {
+        localStorage.setItem(SAVED_TOPOLOGY_STORAGE_KEY, JSON.stringify(updated));
+      } catch (e) {
+        console.error('Falha ao gravar topologia:', e);
+      }
+      return { savedTopologies: updated };
+    });
+    get().addLog(`[CONFIGURAÇÃO SALVA] Layout, nós, conexões e grupos salvos para o projeto atual.`);
+  },
+
+  resetProjectTopologyToDefault: (projectId) => {
+    set((state) => {
+      const updated = { ...state.savedTopologies };
+      delete updated[projectId];
+      try {
+        localStorage.setItem(SAVED_TOPOLOGY_STORAGE_KEY, JSON.stringify(updated));
+      } catch (e) {
+        console.error('Falha ao resetar:', e);
+      }
+      return { savedTopologies: updated };
+    });
+    get().addLog(`[RESET] Layout restaurado para a disposição padrão.`);
+  },
+
   loadActions: async () => {
     try {
       const response = await fetch('/actions/index.json');
@@ -234,46 +443,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       set({ actions: loaded });
     } catch {
       set({
-        actions: [
-          {
-            id: 'template-json-list',
-            name: 'Template: JSON Pipeline List',
-            description: 'Lista de pipelines estruturada em JSON para body de requisição',
-            category: 'templates',
-            executor: 'nodejs',
-            inputs: [],
-            outputs: ['jsonList'],
-            defaultPayload: DEFAULT_TEMPLATE_JSON
-          },
-          {
-            id: 'powershell-azure-post',
-            name: 'PowerShell: Azure POST Batch',
-            description: 'Envia lista de itens via REST Method para o Azure DevOps',
-            category: 'powershell',
-            executor: 'powershell',
-            inputs: ['bodyJson'],
-            outputs: ['response'],
-            defaultScript: DEFAULT_POST_POWERSHELL_SCRIPT
-          },
-          {
-            id: 'azure-pipeline-create',
-            name: 'Azure DevOps: Create Pipeline',
-            description: 'Criação individual de pipeline YAML no projeto',
-            category: 'azure',
-            executor: 'rest',
-            inputs: ['repository', 'pipelineName'],
-            outputs: ['pipelineId']
-          },
-          {
-            id: 'git-clone-branch',
-            name: 'Git: Clone & Branch',
-            description: 'Clona repositório e cria nova branch de trabalho',
-            category: 'git',
-            executor: 'executable',
-            inputs: ['repoUrl', 'branchName'],
-            outputs: ['workingDir']
-          }
-        ]
+        actions: []
       });
     }
   },
@@ -283,13 +453,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       nodes: INITIAL_BATCH_WORKFLOW_NODES,
       edges: INITIAL_BATCH_WORKFLOW_EDGES
     });
-    get().addLog('Workflow carregado: [Template JSON -> PowerShell POST Batch -> Azure DevOps]');
   },
 
   runGetScript: async (customScript) => {
     const { settings, addLog } = get();
-    const scriptToRun = customScript || settings.customGetScript;
-
     set({ isExecutingGet: true });
     addLog(`>>> Executando Script PowerShell de Discovery (GET)...`);
     addLog(`Conectando em https://dev.azure.com/${settings.organization}...`);
@@ -300,7 +467,6 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     addLog(`GET https://dev.azure.com/${settings.organization}/${settings.project}/_apis/pipelines?api-version=7.1-preview.1`);
     await new Promise((r) => setTimeout(r, 500));
 
-    // Atualiza com os mocks atualizados
     set({
       projects: MOCK_PROJECTS,
       pipelines: MOCK_PIPELINES,
@@ -312,51 +478,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       isExecutingGet: false
     });
 
-    addLog(`[OK] Discovery finalizado com sucesso! ${MOCK_PROJECTS.length} projetos e ${MOCK_PIPELINES.length} pipelines sincronizados.`);
+    addLog(`[OK] Discovery finalizado com sucesso!`);
   },
 
   executeWorkflow: async () => {
-    const { nodes, addLog, updateNodeData } = get();
-    if (nodes.length === 0) {
-      addLog('[AVISO] Nenhum nó no workflow para executar.');
-      return;
-    }
-
-    set({ isExecutingWorkflow: true });
-    addLog(`=== INICIANDO EXECUÇÃO DE WORKFLOW (${nodes.length} nós) ===`);
-
-    // Reseta todos os nós para 'idle'
-    nodes.forEach((n) => updateNodeData(n.id, { status: 'idle' }));
-
-    for (let i = 0; i < nodes.length; i++) {
-      const node = nodes[i];
-      addLog(`[PASSO ${i + 1}/${nodes.length}] Executando: "${node.data.label}" (${node.data.kind})`);
-      updateNodeData(node.id, { status: 'running' });
-
-      if (node.data.kind === 'template') {
-        await new Promise((r) => setTimeout(r, 700));
-        let count = 0;
-        try {
-          const parsed = JSON.parse(node.data.templateJson || '[]');
-          count = Array.isArray(parsed) ? parsed.length : 1;
-        } catch {
-          count = 1;
-        }
-        addLog(` -> Template JSON carregado com sucesso (${count} itens prontos para o body).`);
-      } else if (node.data.kind === 'powershell') {
-        await new Promise((r) => setTimeout(r, 1200));
-        addLog(` -> Injetando lista na chave $BodyJson do script PowerShell...`);
-        addLog(` -> Invoke-RestMethod -Method Post enviado para o endpoint Azure DevOps.`);
-        addLog(` -> Resposta HTTP 201 Created recebida.`);
-      } else {
-        await new Promise((r) => setTimeout(r, 600));
-        addLog(` -> Nó "${node.data.label}" concluído com sucesso.`);
-      }
-
-      updateNodeData(node.id, { status: 'success' });
-    }
-
-    addLog('=== WORKFLOW CONCLUÍDO COM SUCESSO! ===');
-    set({ isExecutingWorkflow: false });
+    // Designer workflow
   }
 }));

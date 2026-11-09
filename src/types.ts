@@ -1,6 +1,6 @@
 import type { Node, Edge } from '@xyflow/react';
 
-export type NodeKind = 'input' | 'template' | 'powershell' | 'azure' | 'git' | 'condition' | 'variableGroup' | 'environment';
+export type NodeKind = 'input' | 'template' | 'powershell' | 'azure' | 'git' | 'condition' | 'variableGroup' | 'environment' | 'group';
 
 export type NodeExecutionStatus = 'idle' | 'running' | 'success' | 'error';
 
@@ -22,12 +22,21 @@ export interface ScheduleConfig {
   humanReadable?: string;
 }
 
+export interface VariableGroupVariable {
+  name: string;
+  value: string;
+  isSecret?: boolean;
+}
+
 export interface VariableGroup {
   id: string;
   name: string;
   description: string;
   variablesCount: number;
   isSecret?: boolean;
+  variables: VariableGroupVariable[];
+  azureUrl?: string;
+  groupId?: string;
 }
 
 export interface Environment {
@@ -35,6 +44,34 @@ export interface Environment {
   name: string;
   description: string;
   approvalsRequired?: boolean;
+  titleColor?: string;
+  azureUrl?: string;
+  groupId?: string;
+}
+
+export interface PipelineVariable {
+  name: string;
+  value: string;
+  isSecret?: boolean;
+  allowOverride?: boolean;
+}
+
+export interface PipelineAgent {
+  pool: string;
+  agentName: string;
+  os: string;
+  status: 'online' | 'offline';
+  notes: string;
+  demands?: string[];
+}
+
+export interface TopologyGroup {
+  id: string;
+  projectId: string;
+  name: string;
+  description?: string;
+  color: string;
+  repository?: string;
 }
 
 export interface WorkflowNodeData {
@@ -47,6 +84,8 @@ export interface WorkflowNodeData {
   templateJson?: string;
   bodyKey?: string;
   schedule?: ScheduleConfig;
+  titleColor?: string;
+  groupData?: TopologyGroup;
   config?: Record<string, unknown>;
   [key: string]: unknown;
 }
@@ -89,6 +128,10 @@ export interface AzurePipeline {
   variableGroupIds: string[];
   environmentIds: string[];
   schedule?: ScheduleConfig;
+  variables: PipelineVariable[];
+  agent: PipelineAgent;
+  azureUrl?: string;
+  groupId?: string;
 }
 
 export interface DashboardData {
@@ -108,4 +151,11 @@ export interface SettingsData {
   defaultBranch: string;
   isConnected: boolean;
   customGetScript: string;
+}
+
+export interface SavedProjectTopology {
+  nodes: Node[];
+  edges: Edge[];
+  groups: TopologyGroup[];
+  savedAt: string;
 }
