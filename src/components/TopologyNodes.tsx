@@ -487,15 +487,15 @@ export const GroupContainerNode = memo(({ data, selected }: NodeProps<any>) => {
         minHeight: 220,
         width: '100%',
         height: '100%',
-        backgroundColor: `${color}0c`,
-        border: selected ? `2px solid ${color}` : `2px dashed ${color}66`,
+        backgroundColor: 'transparent',
+        border: selected ? `2px dashed ${color}` : `1.5px dashed ${color}88`,
         borderRadius: 4,
         p: 2,
         position: 'relative',
         boxSizing: 'border-box',
         cursor: 'grab',
-        boxShadow: selected ? `0 0 20px ${color}44` : 'none',
-        transition: 'border 0.2s, box-shadow 0.2s',
+        boxShadow: 'none',
+        transition: 'border 0.2s',
         '&:active': { cursor: 'grabbing' }
       }}
     >
@@ -505,8 +505,8 @@ export const GroupContainerNode = memo(({ data, selected }: NodeProps<any>) => {
         minHeight={180}
         isVisible={selected}
         color={color}
-        lineStyle={{ borderColor: color, borderWidth: 2 }}
-        handleStyle={{ width: 10, height: 10, backgroundColor: color, borderRadius: 3 }}
+        lineStyle={{ borderColor: `${color}88`, borderStyle: 'dashed' }}
+        handleStyle={{ width: 8, height: 8, backgroundColor: color, border: 'none', borderRadius: 2 }}
       />
 
       {/* Header do Grupo com Título, Tag de Repo e Botões de Ação */}

@@ -36,7 +36,22 @@ body {
   background: #334155;
 }
 
-/* React Flow Customizations */
+/* React Flow Customizations - Reset total de estilos e caixas extras nos nós */
+.react-flow__node,
+.react-flow__node.selected,
+.react-flow__node:focus,
+.react-flow__node:focus-visible,
+.react-flow__node-group,
+.react-flow__node-group.selected {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+
 .react-flow__pane {
   cursor: grab;
 }

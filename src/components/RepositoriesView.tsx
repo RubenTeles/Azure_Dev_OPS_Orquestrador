@@ -195,7 +195,7 @@ function InnerTopologyView() {
         id: grp.id,
         type: 'group',
         position: { x: 30, y: 30 + idx * 340 },
-        style: { width: 1120, height: 300 },
+        style: { width: 1120, height: 300, background: 'transparent', border: 'none' },
         data: {
           label: grp.name,
           groupData: grp,
@@ -571,7 +571,7 @@ function InnerTopologyView() {
         id: created.id,
         type: 'group',
         position: { x: 40, y: 40 },
-        style: { width: 1120, height: 320 },
+        style: { width: 1120, height: 320, background: 'transparent', border: 'none' },
         data: {
           label: created.name,
           groupData: created,
