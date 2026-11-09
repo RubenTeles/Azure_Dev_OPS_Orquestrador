@@ -35,6 +35,17 @@ import {
 
 const SETTINGS_STORAGE_KEY = 'devops_studio_settings';
 const SAVED_TOPOLOGY_STORAGE_KEY = 'devops_studio_saved_topologies';
+const OFFLINE_MOCK_STORAGE_KEY = 'devops_studio_offline_mock';
+
+const initialOfflineData = (() => {
+  try {
+    const saved = localStorage.getItem(OFFLINE_MOCK_STORAGE_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch {
+    // fallback
+  }
+  return null;
+})();
 
 const initialSettings: SettingsData = (() => {
   try {
@@ -170,17 +181,21 @@ interface StudioState {
 
   saveProjectTopology: (projectId: string, nodes: Node[], edges: Edge[]) => void;
   resetProjectTopologyToDefault: (projectId: string) => void;
+
+  exportOfflineMockFile: () => void;
+  importOfflineMockFile: (jsonContent: string) => boolean;
+  resetOfflineMockToDefault: () => void;
 }
 
 export const useStudioStore = create<StudioState>((set, get) => ({
   settings: initialSettings,
   showPatModal: !initialSettings.pat,
   selectedProjectId: 'proj-001',
-  projects: MOCK_PROJECTS,
-  pipelines: MOCK_PIPELINES,
-  variableGroups: MOCK_VARIABLE_GROUPS,
-  environments: MOCK_ENVIRONMENTS,
-  topologyGroups: MOCK_TOPOLOGY_GROUPS,
+  projects: initialOfflineData?.projects || MOCK_PROJECTS,
+  pipelines: initialOfflineData?.pipelines || MOCK_PIPELINES,
+  variableGroups: initialOfflineData?.variableGroups || MOCK_VARIABLE_GROUPS,
+  environments: initialOfflineData?.environments || MOCK_ENVIRONMENTS,
+  topologyGroups: initialOfflineData?.topologyGroups || MOCK_TOPOLOGY_GROUPS,
   savedTopologies: initialSavedTopologies,
   dashboard: MOCK_DASHBOARD_METRICS,
   nodes: INITIAL_BATCH_WORKFLOW_NODES,
@@ -434,6 +449,75 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       return { savedTopologies: updated };
     });
     get().addLog(`[RESET] Layout restaurado para a disposição padrão.`);
+  },
+
+  exportOfflineMockFile: () => {
+    const state = get();
+    const dataToExport = {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      projects: state.projects,
+      pipelines: state.pipelines,
+      variableGroups: state.variableGroups,
+      environments: state.environments,
+      topologyGroups: state.topologyGroups
+    };
+    const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'offline-mock.json';
+    link.click();
+    URL.revokeObjectURL(link.href);
+    get().addLog('[OFFLINE MOCK] Ficheiro offline-mock.json exportado com sucesso (pode ser guardado em config/mocks/).');
+  },
+
+  importOfflineMockFile: (jsonContent: string) => {
+    try {
+      const parsed = JSON.parse(jsonContent);
+      if (!parsed.projects || !Array.isArray(parsed.projects)) {
+        throw new Error('Formato inválido: array de projetos não encontrado');
+      }
+
+      set({
+        projects: parsed.projects,
+        pipelines: parsed.pipelines || [],
+        variableGroups: parsed.variableGroups || {},
+        environments: parsed.environments || {},
+        topologyGroups: parsed.topologyGroups || {},
+        dashboard: {
+          ...get().dashboard,
+          projects: parsed.projects.length,
+          pipelines: (parsed.pipelines || []).length
+        }
+      });
+
+      // Persiste no localStorage para sobreviver a recarregamentos mesmo offline
+      try {
+        localStorage.setItem(OFFLINE_MOCK_STORAGE_KEY, JSON.stringify(parsed));
+      } catch (err) {
+        console.error('Falha ao persistir mock offline:', err);
+      }
+
+      get().addLog(`[OFFLINE MOCK] Carregados ${parsed.projects.length} projetos e ${(parsed.pipelines || []).length} pipelines para modo offline.`);
+      return true;
+    } catch (e: any) {
+      get().addLog(`[ERRO OFFLINE MOCK] Falha ao importar ficheiro de mock: ${e.message}`);
+      return false;
+    }
+  },
+
+  resetOfflineMockToDefault: () => {
+    try {
+      localStorage.removeItem(OFFLINE_MOCK_STORAGE_KEY);
+    } catch {}
+    set({
+      projects: MOCK_PROJECTS,
+      pipelines: MOCK_PIPELINES,
+      variableGroups: MOCK_VARIABLE_GROUPS,
+      environments: MOCK_ENVIRONMENTS,
+      topologyGroups: MOCK_TOPOLOGY_GROUPS
+    });
+    get().addLog('[OFFLINE MOCK] Dados restaurados para os mocks iniciais de fábrica.');
   },
 
   loadActions: async () => {

@@ -1,0 +1,177 @@
+{
+  "version": "1.0",
+  "exportedAt": "2026-11-09T23:20:00.000Z",
+  "projects": [
+    {
+      "id": "proj-001",
+      "name": "Enterprise-Core-Banking",
+      "description": "Serviços centrais de contabilidade, transações e liquidações bancárias em tempo real.",
+      "visibility": "private",
+      "state": "wellFormed",
+      "url": "https://dev.azure.com/contoso/Enterprise-Core-Banking",
+      "lastUpdateTime": "Há 12 minutos",
+      "repositoriesCount": 6,
+      "pipelinesCount": 4,
+      "defaultRepository": "core-banking-services.git"
+    },
+    {
+      "id": "proj-002",
+      "name": "Digital-Payments-Gateway",
+      "description": "Gateway de pagamentos integrando redes Multibanco, MB WAY, SEPA e Cartões de Crédito.",
+      "visibility": "private",
+      "state": "wellFormed",
+      "url": "https://dev.azure.com/contoso/Digital-Payments-Gateway",
+      "lastUpdateTime": "Há 1 hora",
+      "repositoriesCount": 4,
+      "pipelinesCount": 3,
+      "defaultRepository": "payments-gateway-engine.git"
+    },
+    {
+      "id": "proj-003",
+      "name": "Customer-Portal-Omnichannel",
+      "description": "Aplicações Web e Mobile de homebanking para clientes particulares e corporativos.",
+      "visibility": "private",
+      "state": "wellFormed",
+      "url": "https://dev.azure.com/contoso/Customer-Portal-Omnichannel",
+      "lastUpdateTime": "Há 3 horas",
+      "repositoriesCount": 5,
+      "pipelinesCount": 2,
+      "defaultRepository": "customer-portal-frontend.git"
+    },
+    {
+      "id": "proj-004",
+      "name": "Cloud-Infrastructure-IaC",
+      "description": "Módulos de Terraform e Bicep para provisionamento automático de infraestrutura no Azure.",
+      "visibility": "private",
+      "state": "wellFormed",
+      "url": "https://dev.azure.com/contoso/Cloud-Infrastructure-IaC",
+      "lastUpdateTime": "Ontem",
+      "repositoriesCount": 3,
+      "pipelinesCount": 1,
+      "defaultRepository": "azure-iac-terraform.git"
+    }
+  ],
+  "variableGroups": {
+    "proj-001": [
+      {
+        "id": "vg-core-secrets",
+        "name": "vg-core-banking-secrets",
+        "description": "Chaves de encriptação AES-256 e tokens de autorização bancária",
+        "variablesCount": 4,
+        "isSecret": true,
+        "azureUrl": "https://dev.azure.com/contoso/Enterprise-Core-Banking/_library?itemType=VariableGroups&view=VariableGroupView&variableGroupId=101",
+        "variables": [
+          { "name": "BANK_ENCRYPTION_KEY_AES256", "value": "vault-core-key-sec-88219", "isSecret": true },
+          { "name": "SIBS_API_SECRET_TOKEN", "value": "sibs_live_token_77a8b9", "isSecret": true },
+          { "name": "SWIFT_GATEWAY_CERT_PASSWORD", "value": "swift_pass_enc_3311", "isSecret": true },
+          { "name": "AUDIT_LOGGER_HASH_SALT", "value": "salt_9921_core_bank", "isSecret": true }
+        ]
+      },
+      {
+        "id": "vg-core-db-config",
+        "name": "vg-core-sql-connection",
+        "description": "Strings de conexão SQL Server e pool limits",
+        "variablesCount": 4,
+        "isSecret": false,
+        "azureUrl": "https://dev.azure.com/contoso/Enterprise-Core-Banking/_library?itemType=VariableGroups&view=VariableGroupView&variableGroupId=102",
+        "variables": [
+          { "name": "SQL_SERVER_HOST", "value": "sql-core-banking-prod.database.windows.net", "isSecret": false },
+          { "name": "SQL_DATABASE_NAME", "value": "db_core_transactions", "isSecret": false },
+          { "name": "SQL_CONNECTION_TIMEOUT", "value": "30", "isSecret": false },
+          { "name": "SQL_MAX_POOL_SIZE", "value": "150", "isSecret": false }
+        ]
+      }
+    ]
+  },
+  "environments": {
+    "proj-001": [
+      {
+        "id": "env-dev",
+        "name": "Development",
+        "description": "Cluster AKS de desenvolvimento interno",
+        "approvalsRequired": false,
+        "titleColor": "#0284c7",
+        "azureUrl": "https://dev.azure.com/contoso/Enterprise-Core-Banking/_environments/1"
+      },
+      {
+        "id": "env-staging",
+        "name": "Staging / UAT",
+        "description": "Ambiente de homologação bancária com dados anonimizados",
+        "approvalsRequired": true,
+        "titleColor": "#eab308",
+        "azureUrl": "https://dev.azure.com/contoso/Enterprise-Core-Banking/_environments/2"
+      },
+      {
+        "id": "env-prod",
+        "name": "Production - Core Bank",
+        "description": "Ambiente de produção de alta disponibilidade (Tier 0)",
+        "approvalsRequired": true,
+        "titleColor": "#ef4444",
+        "azureUrl": "https://dev.azure.com/contoso/Enterprise-Core-Banking/_environments/3"
+      }
+    ]
+  },
+  "pipelines": [
+    {
+      "id": "pipe-101",
+      "projectId": "proj-001",
+      "name": "core-banking-ci-build",
+      "folder": "\\CI\\Builds",
+      "status": "completed",
+      "result": "succeeded",
+      "repository": "core-banking-services.git",
+      "branch": "main",
+      "lastRunDate": "Há 8 minutos",
+      "duration": "2m 45s",
+      "author": "Ricardo Silva",
+      "variableGroupIds": ["vg-core-secrets", "vg-core-db-config"],
+      "environmentIds": ["env-dev"],
+      "azureUrl": "https://dev.azure.com/contoso/Enterprise-Core-Banking/_build?definitionId=101",
+      "schedule": { "hasSchedule": false },
+      "agent": {
+        "pool": "Azure Pipelines (Hosted)",
+        "agentName": "Hosted Agent Linux - Ubuntu 22.04 LTS",
+        "os": "Linux x64",
+        "status": "online",
+        "notes": "Agente cloud standard com .NET 8 SDK e Docker instalado para build de microserviços.",
+        "demands": ["DotNetFramework", "docker"]
+      },
+      "variables": [
+        { "name": "BUILD_CONFIGURATION", "value": "Release", "isSecret": false, "allowOverride": true },
+        { "name": "SONAR_PROJECT_KEY", "value": "core-banking-backend", "isSecret": false }
+      ]
+    },
+    {
+      "id": "pipe-102",
+      "projectId": "proj-001",
+      "name": "core-banking-nightly-reconciliation",
+      "folder": "\\Batch\\Nightly",
+      "status": "completed",
+      "result": "succeeded",
+      "repository": "core-banking-services.git",
+      "branch": "main",
+      "lastRunDate": "Hoje às 02:00",
+      "duration": "18m 10s",
+      "author": "Automated Scheduler",
+      "variableGroupIds": ["vg-core-secrets", "vg-core-db-config"],
+      "environmentIds": ["env-staging", "env-prod"],
+      "azureUrl": "https://dev.azure.com/contoso/Enterprise-Core-Banking/_build?definitionId=102",
+      "schedule": {
+        "hasSchedule": true,
+        "cron": "0 2 * * *",
+        "humanReadable": "Diariamente às 02:00 UTC (Nightly Batch)"
+      },
+      "agent": {
+        "pool": "Self-Hosted-Banking-Cluster",
+        "agentName": "worker-batch-node-03.internal.bank",
+        "os": "RedHat Enterprise Linux 9",
+        "status": "online",
+        "notes": "Agente dedicado On-Premises com acesso direto à rede fechada da câmara de compensação.",
+        "demands": ["HighMemory", "DirectDBAccess"]
+      },
+      "variables": [
+        { "name": "BATCH_CHUNK_SIZE", "value": "50000", "isSecret": false }
+      ]
+    }
+  ]
+}

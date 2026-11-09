@@ -35,6 +35,8 @@ import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite
 import TerminalIcon from '@mui/icons-material/Terminal';
 import LockIcon from '@mui/icons-material/Lock';
 import PublicIcon from '@mui/icons-material/Public';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import FileUploadIcon from '@mui/icons-material/FileUpload';
 import { useStudioStore } from '../store';
 import { GetScriptModal } from './GetScriptModal';
 import type { AzurePipeline, AzureProject } from '../types';
@@ -48,11 +50,24 @@ export function Dashboard({ onNavigateToTopology }: { onNavigateToTopology?: () 
     setShowPatModal,
     runGetScript,
     isExecutingGet,
-    addLog
+    addLog,
+    exportOfflineMockFile,
+    importOfflineMockFile
   } = useStudioStore();
 
   const [activeTab, setActiveTab] = useState(0);
   const [isGetModalOpen, setIsGetModalOpen] = useState(false);
+
+  const handleUploadMock = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    file.text().then((text) => {
+      const ok = importOfflineMockFile(text);
+      if (ok) {
+        addLog(`[MOCK OFFLINE] Ficheiro "${file.name}" carregado com sucesso.`);
+      }
+    });
+  };
 
   const handleRunPipeline = (pipe: AzurePipeline) => {
     addLog(`[PIPELINE TRIGGER] Disparando execução manual para: "${pipe.name}" no branch "${pipe.branch}"...`);
@@ -287,6 +302,38 @@ export function Dashboard({ onNavigateToTopology }: { onNavigateToTopology?: () 
 {`$projectsUrl = "https://dev.azure.com/${settings.organization || '{org}'}/_apis/projects?api-version=7.1-preview.4"
 $pipelinesUrl = "https://dev.azure.com/${settings.organization || '{org}'}/${settings.project || '{proj}'}/_apis/pipelines?api-version=7.1-preview.1"
 Invoke-RestMethod -Uri $projectsUrl -Headers $headers -Method Get`}
+            </Box>
+
+            {/* Ações de Gestão de Mocks Offline para Testes */}
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 2, pt: 1.5, borderTop: '1px solid #1e293b', flexWrap: 'wrap', gap: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="caption" sx={{ color: '#94a3b8' }}>
+                  📁 <b>Modo Offline / Testes:</b> Mocks guardados localmente em <code>config/mocks/offline-mock.json</code>
+                </Typography>
+              </Box>
+
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<FileDownloadIcon />}
+                  onClick={exportOfflineMockFile}
+                  sx={{ borderColor: '#334155', color: '#cbd5e1', fontSize: '0.72rem', textTransform: 'none' }}
+                >
+                  Exportar Mock (JSON)
+                </Button>
+
+                <Button
+                  size="small"
+                  variant="outlined"
+                  component="label"
+                  startIcon={<FileUploadIcon />}
+                  sx={{ borderColor: '#334155', color: '#cbd5e1', fontSize: '0.72rem', textTransform: 'none' }}
+                >
+                  Carregar Mock do Disco
+                  <input hidden type="file" accept=".json" onChange={handleUploadMock} />
+                </Button>
+              </Box>
             </Box>
           </CardContent>
         </Card>
