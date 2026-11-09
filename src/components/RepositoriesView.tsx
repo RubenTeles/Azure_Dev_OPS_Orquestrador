@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import {
   Box,
   Card,
@@ -101,6 +101,7 @@ function InnerTopologyView() {
     saveProjectTopology,
     resetProjectTopologyToDefault,
     addTopologyGroup,
+    updateTopologyGroup,
     deleteTopologyGroup,
     connectVariableGroupToPipeline,
     disconnectVariableGroupFromPipeline,
@@ -126,6 +127,9 @@ function InnerTopologyView() {
   const [edges, setEdges] = useState<Edge[]>([]);
   const [onlyScheduled, setOnlyScheduled] = useState(false);
 
+  // Referência para controlar o último projeto carregado
+  const loadedProjectIdRef = useRef<string | null>(null);
+
   // Estados para Gavetas de Inspeção
   const [inspectPipeline, setInspectPipeline] = useState<AzurePipeline | null>(null);
   const [inspectVariableGroup, setInspectVariableGroup] = useState<VariableGroup | null>(null);
@@ -138,18 +142,36 @@ function InnerTopologyView() {
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
   const [pendingEdgeRemoval, setPendingEdgeRemoval] = useState<Edge | null>(null);
 
-  // Modal para Criar Grupo
+  // Modal para Criar / Editar Grupo
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDesc, setNewGroupDesc] = useState('');
   const [newGroupColor, setNewGroupColor] = useState(COLOR_PALETTE[0]);
   const [newGroupRepo, setNewGroupRepo] = useState(activeProject.defaultRepository || '');
+
+  // Confirmação para Eliminar Grupo
+  const [groupToDeleteId, setGroupToDeleteId] = useState<string | null>(null);
 
   // Toast de feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Mostrar segredos
   const [revealedSecrets, setRevealedSecrets] = useState<Record<string, boolean>>({});
+
+  // Callbacks para os nós de Grupo
+  const handleOpenEditGroup = useCallback((group: TopologyGroup) => {
+    setEditingGroupId(group.id);
+    setNewGroupName(group.name);
+    setNewGroupDesc(group.description || '');
+    setNewGroupColor(group.color || COLOR_PALETTE[0]);
+    setNewGroupRepo(group.repository || '');
+    setIsGroupModalOpen(true);
+  }, []);
+
+  const handleRequestDeleteGroup = useCallback((groupId: string) => {
+    setGroupToDeleteId(groupId);
+  }, []);
 
   // Tipos de nós no ReactFlow
   const nodeTypes = useMemo(
@@ -162,33 +184,36 @@ function InnerTopologyView() {
     []
   );
 
-  // Inicializar Nós e Arestas (carrega do localStorage se existir, senão gera layout padrão)
-  const generateDefaultTopology = useCallback(() => {
+  // Geração do layout padrão inicial
+  const buildDefaultTopology = useCallback(() => {
     const generatedNodes: Node[] = [];
     const generatedEdges: Edge[] = [];
 
-    // 0. Grupos do Projeto (Fundo)
+    // 0. Grupos do Projeto (Fundo, zIndex: 0)
     currentGroups.forEach((grp, idx) => {
       generatedNodes.push({
         id: grp.id,
         type: 'group',
-        position: { x: 20, y: 20 + idx * 320 },
+        position: { x: 30, y: 30 + idx * 340 },
+        style: { width: 1120, height: 300 },
         data: {
           label: grp.name,
           groupData: grp,
-          kind: 'group'
+          kind: 'group',
+          onEditGroup: handleOpenEditGroup,
+          onDeleteGroup: handleRequestDeleteGroup
         },
         draggable: true,
-        zIndex: -1
+        zIndex: 0
       });
     });
 
-    // 1. Variable Groups (Coluna Esquerda, x: 50)
+    // 1. Variable Groups (Coluna Esquerda, x: 60, zIndex: 10)
     currentVariableGroups.forEach((vg, index) => {
       generatedNodes.push({
         id: vg.id,
         type: 'variableGroup',
-        position: { x: 50, y: 60 + index * 140 },
+        position: { x: 60, y: 70 + index * 140 },
         data: {
           label: vg.name,
           description: vg.description,
@@ -198,16 +223,17 @@ function InnerTopologyView() {
           variables: vg.variables,
           kind: 'variableGroup'
         },
-        draggable: true
+        draggable: true,
+        zIndex: 10
       });
     });
 
-    // 2. Pipelines (Coluna Central, x: 440)
+    // 2. Pipelines (Coluna Central, x: 440, zIndex: 10)
     currentPipelines.forEach((pipe, index) => {
       generatedNodes.push({
         id: pipe.id,
         type: 'pipeline',
-        position: { x: 440, y: 40 + index * 175 },
+        position: { x: 440, y: 50 + index * 175 },
         data: {
           label: pipe.name,
           branch: pipe.branch,
@@ -221,7 +247,8 @@ function InnerTopologyView() {
           variables: pipe.variables,
           kind: 'pipeline'
         },
-        draggable: true
+        draggable: true,
+        zIndex: 10
       });
 
       // Arestas: Variable Group -> Pipeline
@@ -259,12 +286,12 @@ function InnerTopologyView() {
       });
     });
 
-    // 3. Environments (Coluna Direita, x: 860)
+    // 3. Environments (Coluna Direita, x: 860, zIndex: 10)
     currentEnvironments.forEach((env, index) => {
       generatedNodes.push({
         id: env.id,
         type: 'environment',
-        position: { x: 860, y: 60 + index * 140 },
+        position: { x: 860, y: 70 + index * 140 },
         data: {
           label: env.name,
           description: env.description,
@@ -273,73 +300,93 @@ function InnerTopologyView() {
           azureUrl: env.azureUrl,
           kind: 'environment'
         },
-        draggable: true
+        draggable: true,
+        zIndex: 10
       });
     });
 
     return { nodes: generatedNodes, edges: generatedEdges };
-  }, [currentGroups, currentVariableGroups, currentPipelines, currentEnvironments]);
+  }, [currentGroups, currentVariableGroups, currentPipelines, currentEnvironments, handleOpenEditGroup, handleRequestDeleteGroup]);
 
-  // Carrega ao trocar de projeto
+  // Carregar Nós: roda APENAS quando o ID do projeto muda!
   useEffect(() => {
+    if (loadedProjectIdRef.current === activeProject.id) {
+      return;
+    }
+    loadedProjectIdRef.current = activeProject.id;
+
     const saved = savedTopologies[activeProject.id];
     if (saved && saved.nodes && saved.nodes.length > 0) {
-      // Re-injeta dados dinâmicos atualizados nos nós salvos
+      // Re-injeta callbacks e dados dinâmicos preservando as posições exatas salvas pelo usuário
       const hydratedNodes = saved.nodes.map((n) => {
+        if (n.type === 'group') {
+          const liveGrp = currentGroups.find((g) => g.id === n.id) || (n.data?.groupData as TopologyGroup);
+          return {
+            ...n,
+            zIndex: 0,
+            draggable: true,
+            data: {
+              ...n.data,
+              groupData: liveGrp,
+              onEditGroup: handleOpenEditGroup,
+              onDeleteGroup: handleRequestDeleteGroup
+            }
+          };
+        }
         if (n.type === 'pipeline') {
           const livePipe = currentPipelines.find((p) => p.id === n.id);
-          if (livePipe) {
-            return {
-              ...n,
-              data: {
-                ...n.data,
-                schedule: livePipe.schedule,
-                agent: livePipe.agent,
-                variables: livePipe.variables,
-                azureUrl: livePipe.azureUrl
-              }
-            };
-          }
+          return {
+            ...n,
+            zIndex: 10,
+            draggable: true,
+            data: {
+              ...n.data,
+              schedule: livePipe?.schedule,
+              agent: livePipe?.agent,
+              variables: livePipe?.variables,
+              azureUrl: livePipe?.azureUrl
+            }
+          };
         }
         if (n.type === 'variableGroup') {
           const liveVg = currentVariableGroups.find((v) => v.id === n.id);
-          if (liveVg) {
-            return {
-              ...n,
-              data: {
-                ...n.data,
-                variables: liveVg.variables,
-                azureUrl: liveVg.azureUrl
-              }
-            };
-          }
+          return {
+            ...n,
+            zIndex: 10,
+            draggable: true,
+            data: {
+              ...n.data,
+              variables: liveVg?.variables,
+              azureUrl: liveVg?.azureUrl
+            }
+          };
         }
         if (n.type === 'environment') {
           const liveEnv = currentEnvironments.find((e) => e.id === n.id);
-          if (liveEnv) {
-            return {
-              ...n,
-              data: {
-                ...n.data,
-                titleColor: liveEnv.titleColor,
-                azureUrl: liveEnv.azureUrl
-              }
-            };
-          }
+          return {
+            ...n,
+            zIndex: 10,
+            draggable: true,
+            data: {
+              ...n.data,
+              titleColor: liveEnv?.titleColor,
+              azureUrl: liveEnv?.azureUrl
+            }
+          };
         }
-        return n;
+        return { ...n, draggable: true };
       });
       setNodes(hydratedNodes);
       setEdges(saved.edges || []);
-      addLog(`[TOPOLOGIA] Layout customizado carregado do cache local para "${activeProject.name}".`);
+      addLog(`[TOPOLOGIA] Configuração carregada para "${activeProject.name}".`);
     } else {
-      const initial = generateDefaultTopology();
+      const initial = buildDefaultTopology();
       setNodes(initial.nodes);
       setEdges(initial.edges);
     }
-  }, [activeProject.id, savedTopologies, generateDefaultTopology, currentPipelines, currentVariableGroups, currentEnvironments, addLog]);
+  }, [activeProject.id, savedTopologies, buildDefaultTopology, currentPipelines, currentVariableGroups, currentEnvironments, currentGroups, handleOpenEditGroup, handleRequestDeleteGroup, addLog]);
 
-  // Movimento livre dos nós
+  // Movimento livre e redimensionamento dos nós
   const onNodesChange: OnNodesChange = useCallback((changes) => {
     setNodes((nds) => applyNodeChanges(changes, nds));
   }, []);
@@ -348,7 +395,7 @@ function InnerTopologyView() {
     setEdges((eds) => applyEdgeChanges(changes, eds));
   }, []);
 
-  // Ao arrastar uma conexão: Intercepta para exibir POP-UP de Confirmação!
+  // Ao arrastar uma conexão: abre POP-UP de confirmação
   const onConnect = useCallback((connection: Connection) => {
     setPendingConnection(connection);
   }, []);
@@ -359,12 +406,10 @@ function InnerTopologyView() {
     const { source, target } = pendingConnection;
     if (!source || !target) return;
 
-    // Caso 1: Variable Group -> Pipeline
     const isVgToPipe =
       currentVariableGroups.some((v) => v.id === source) &&
       currentPipelines.some((p) => p.id === target);
 
-    // Caso 2: Pipeline -> Environment
     const isPipeToEnv =
       currentPipelines.some((p) => p.id === source) &&
       currentEnvironments.some((e) => e.id === target);
@@ -381,7 +426,7 @@ function InnerTopologyView() {
           style: { stroke: '#818cf8', strokeWidth: 2 }
         }
       ]);
-      setToastMessage('Variable Group vinculado à Pipeline com sucesso!');
+      setToastMessage('Variable Group vinculado à Pipeline!');
     } else if (isPipeToEnv) {
       connectPipelineToEnvironment(source, target);
       setEdges((eds) => [
@@ -394,15 +439,15 @@ function InnerTopologyView() {
           style: { stroke: '#34d399', strokeWidth: 2 }
         }
       ]);
-      setToastMessage('Environment vinculado à Pipeline com sucesso!');
+      setToastMessage('Environment vinculado à Pipeline!');
     } else {
-      setToastMessage('Conexão direta não suportada entre estes tipos de nós.');
+      setToastMessage('Conexão direta não suportada entre estes componentes.');
     }
 
     setPendingConnection(null);
   };
 
-  // Ao clicar em uma aresta: Exibe POP-UP para Confirmação de Remoção
+  // Ao clicar em uma aresta: abre POP-UP para confirmação de remoção
   const onEdgeClick: EdgeMouseHandler = useCallback((_, edge) => {
     setPendingEdgeRemoval(edge);
   }, []);
@@ -412,11 +457,9 @@ function InnerTopologyView() {
     if (!pendingEdgeRemoval) return;
     const { source, target, id } = pendingEdgeRemoval;
 
-    // Se for Variable Group -> Pipeline
     if (currentVariableGroups.some((v) => v.id === source)) {
       disconnectVariableGroupFromPipeline(source, target);
     }
-    // Se for Pipeline -> Environment
     if (currentEnvironments.some((e) => e.id === target)) {
       disconnectPipelineFromEnvironment(source, target);
     }
@@ -445,57 +488,124 @@ function InnerTopologyView() {
         if (env) {
           setInspectEnvironment(env);
         }
+      } else if (node.type === 'group') {
+        // Clicar no grupo seleciona o grupo para permitir redimensionar com as alças
       }
     },
     [currentPipelines, currentVariableGroups, currentEnvironments]
   );
 
-  // Salvar Topologia e Posições
+  // Salvar Topologia e Posições sem resetar nada
   const handleSaveTopology = () => {
     saveProjectTopology(activeProject.id, nodes, edges);
-    setToastMessage('Configuração do projeto salva com sucesso no armazenamento local!');
+    setToastMessage('Configuração do projeto salva com sucesso!');
   };
 
-  // Resetar Layout
+  // Resetar Layout para o Padrão
   const handleResetLayout = () => {
     resetProjectTopologyToDefault(activeProject.id);
-    const initial = generateDefaultTopology();
+    const initial = buildDefaultTopology();
     setNodes(initial.nodes);
     setEdges(initial.edges);
     setToastMessage('Layout restaurado para o padrão.');
   };
 
-  // Criar Novo Grupo
-  const handleCreateGroup = () => {
-    if (!newGroupName.trim()) return;
-    const created = addTopologyGroup(activeProject.id, {
-      name: newGroupName.trim(),
-      description: newGroupDesc.trim(),
-      color: newGroupColor,
-      repository: newGroupRepo.trim()
-    });
+  // Abrir Modal para Criar Grupo
+  const handleOpenCreateGroup = () => {
+    setEditingGroupId(null);
+    setNewGroupName('');
+    setNewGroupDesc('');
+    setNewGroupColor(COLOR_PALETTE[0]);
+    setNewGroupRepo(activeProject.defaultRepository || '');
+    setIsGroupModalOpen(true);
+  };
 
-    // Adiciona o nó do grupo ao canvas
-    setNodes((nds) => [
-      {
+  // Salvar Criação ou Edição do Grupo (PRESERVANDO 100% DAS POSIÇÕES DOS OUTROS NÓS!)
+  const handleSaveGroupModal = () => {
+    if (!newGroupName.trim()) return;
+
+    if (editingGroupId) {
+      // Editando Grupo Existente
+      updateTopologyGroup(editingGroupId, {
+        name: newGroupName.trim(),
+        description: newGroupDesc.trim(),
+        color: newGroupColor,
+        repository: newGroupRepo.trim()
+      });
+
+      const updatedGroup: TopologyGroup = {
+        id: editingGroupId,
+        projectId: activeProject.id,
+        name: newGroupName.trim(),
+        description: newGroupDesc.trim(),
+        color: newGroupColor,
+        repository: newGroupRepo.trim()
+      };
+
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id === editingGroupId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                label: updatedGroup.name,
+                groupData: updatedGroup
+              }
+            };
+          }
+          return n;
+        })
+      );
+      setToastMessage(`Grupo "${updatedGroup.name}" atualizado!`);
+    } else {
+      // Criando Novo Grupo
+      const created = addTopologyGroup(activeProject.id, {
+        name: newGroupName.trim(),
+        description: newGroupDesc.trim(),
+        color: newGroupColor,
+        repository: newGroupRepo.trim()
+      });
+
+      const newGroupNode: Node = {
         id: created.id,
         type: 'group',
-        position: { x: 30, y: 30 },
+        position: { x: 40, y: 40 },
+        style: { width: 1120, height: 320 },
         data: {
           label: created.name,
           groupData: created,
-          kind: 'group'
+          kind: 'group',
+          onEditGroup: handleOpenEditGroup,
+          onDeleteGroup: handleRequestDeleteGroup
         },
         draggable: true,
-        zIndex: -1
-      },
-      ...nds
-    ]);
+        zIndex: 0
+      };
+
+      // Adiciona o nó no topo SEM mexer nas posições dos nós existentes!
+      const updatedNodes = [newGroupNode, ...nodes];
+      setNodes(updatedNodes);
+
+      // Salva imediatamente para que as posições sejam persistidas
+      saveProjectTopology(activeProject.id, updatedNodes, edges);
+      setToastMessage(`Grupo "${created.name}" adicionado à topologia!`);
+    }
 
     setIsGroupModalOpen(false);
-    setNewGroupName('');
-    setNewGroupDesc('');
-    setToastMessage(`Grupo "${created.name}" adicionado à topologia!`);
+  };
+
+  // Confirmar Eliminação do Grupo
+  const handleConfirmDeleteGroup = () => {
+    if (!groupToDeleteId) return;
+
+    deleteTopologyGroup(groupToDeleteId);
+    const updatedNodes = nodes.filter((n) => n.id !== groupToDeleteId);
+    setNodes(updatedNodes);
+
+    saveProjectTopology(activeProject.id, updatedNodes, edges);
+    setToastMessage('Grupo eliminado com sucesso!');
+    setGroupToDeleteId(null);
   };
 
   // Salvar Notas do Agente
@@ -509,7 +619,7 @@ function InnerTopologyView() {
         notes: agentNotesInput
       }
     });
-    // Atualiza o dado do nó no canvas
+
     setNodes((nds) =>
       nds.map((n) => {
         if (n.id === inspectPipeline.id) {
@@ -538,7 +648,7 @@ function InnerTopologyView() {
       ...inspectEnvironment,
       titleColor: color
     });
-    // Atualiza imediatamente o nó no canvas
+
     setNodes((nds) =>
       nds.map((n) => {
         if (n.id === inspectEnvironment.id) {
@@ -556,7 +666,7 @@ function InnerTopologyView() {
     setToastMessage('Cor do título do Environment atualizada!');
   };
 
-  // Filtro de Agendamentos (oculta ou exibe nós)
+  // Filtro de Agendamentos
   const displayNodes = useMemo(() => {
     if (!onlyScheduled) return nodes;
     return nodes.filter((n) => {
@@ -568,7 +678,7 @@ function InnerTopologyView() {
     });
   }, [nodes, onlyScheduled, currentPipelines]);
 
-  // Labels amigáveis para modais de conexão
+  // Nomes amigáveis para diálogos de confirmação
   const getPendingConnectionNames = () => {
     if (!pendingConnection) return { sourceName: '', targetName: '', type: '' };
     const srcVg = currentVariableGroups.find((v) => v.id === pendingConnection.source);
@@ -612,7 +722,7 @@ function InnerTopologyView() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 48px)', backgroundColor: '#0d1117' }}>
-      {/* BARRA SUPERIOR: SELEÇÃO, GRUPOS, SALVAR & FILTROS */}
+      {/* BARRA SUPERIOR */}
       <Box
         sx={{
           p: 2,
@@ -626,7 +736,7 @@ function InnerTopologyView() {
           zIndex: 5
         }}
       >
-        {/* Lado Esquerdo: Dropdown de Projetos & Info */}
+        {/* Dropdown de Projetos & Info */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Box
             sx={{
@@ -689,20 +799,18 @@ function InnerTopologyView() {
           />
         </Box>
 
-        {/* Lado Direito: Ações de Grupos, Salvar, Filtros */}
+        {/* Ações de Grupos, Salvar, Filtros */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-          {/* Botão Novo Grupo */}
           <Button
             size="small"
             variant="outlined"
             startIcon={<AddCircleOutlineIcon />}
-            onClick={() => setIsGroupModalOpen(true)}
+            onClick={handleOpenCreateGroup}
             sx={{ borderColor: '#334155', color: '#e2e8f0', textTransform: 'none' }}
           >
             Criar Grupo / Repositório
           </Button>
 
-          {/* Botão Salvar Configuração do Projeto */}
           <Button
             size="small"
             variant="contained"
@@ -718,7 +826,6 @@ function InnerTopologyView() {
             Guardar Configuração
           </Button>
 
-          {/* Botão Reset Layout */}
           <Tooltip title="Restaurar posições originais dos nós">
             <IconButton size="small" onClick={handleResetLayout} sx={{ color: '#94a3b8' }}>
               <RestartAltIcon fontSize="small" />
@@ -727,7 +834,6 @@ function InnerTopologyView() {
 
           <Divider orientation="vertical" flexItem sx={{ borderColor: '#222d3d' }} />
 
-          {/* Toggle de Agendamentos */}
           <FormControlLabel
             control={
               <Switch
@@ -779,7 +885,7 @@ function InnerTopologyView() {
           />
         </ReactFlow>
 
-        {/* Barra Informativa Flutuante no Rodapé */}
+        {/* Barra Informativa Flutuante */}
         <Box
           sx={{
             position: 'absolute',
@@ -796,12 +902,12 @@ function InnerTopologyView() {
           }}
         >
           <Typography variant="caption" sx={{ color: '#cbd5e1' }}>
-            🖱️ <b>Arraste livremente</b> os nós • Ligue pontas para <b>vincular</b> • Clique em qualquer conexão para <b>remover</b>
+            🖱️ <b>Redimensione</b> puxando as alças dos nós • <b>Mova livremente</b> • Clique no Grupo para <b>Editar/Eliminar</b>
           </Typography>
         </Box>
       </Box>
 
-      {/* 1. GAVETA DE DETALHES DA PIPELINE (VARIÁVEIS INDIVIDUAIS, AGENTE & NOTAS) */}
+      {/* 1. GAVETA DE DETALHES DA PIPELINE */}
       <Drawer
         anchor="right"
         open={Boolean(inspectPipeline)}
@@ -817,7 +923,6 @@ function InnerTopologyView() {
       >
         {inspectPipeline && (
           <Box>
-            {/* Header da Gaveta */}
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
                 <AccountTreeIcon sx={{ color: '#38bdf8' }} />
@@ -851,7 +956,6 @@ function InnerTopologyView() {
             <Divider sx={{ borderColor: '#222d3d', mb: 2.5 }} />
 
             <Stack spacing={2.5}>
-              {/* Card de Agendamento */}
               {inspectPipeline.schedule?.hasSchedule ? (
                 <Box
                   sx={{
@@ -884,7 +988,7 @@ function InnerTopologyView() {
                 </Box>
               )}
 
-              {/* SEÇÃO: AGENTE ASSOCIADO À PIPELINE & NOTAS */}
+              {/* Agente e Notas */}
               <Box sx={{ p: 2, backgroundColor: '#161e2b', borderRadius: 2, border: '1px solid #253347' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                   <SupportAgentIcon sx={{ color: '#38bdf8' }} />
@@ -917,7 +1021,6 @@ function InnerTopologyView() {
                   </Box>
                 </Box>
 
-                {/* Demands */}
                 {inspectPipeline.agent.demands && (
                   <Box sx={{ mb: 2 }}>
                     <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mb: 0.5 }}>
@@ -931,7 +1034,6 @@ function InnerTopologyView() {
                   </Box>
                 )}
 
-                {/* Campo de Notas do Agente */}
                 <Typography variant="caption" sx={{ color: '#94a3b8', fontWeight: 700, display: 'block', mb: 0.8 }}>
                   Notas do Agente (Editável):
                 </Typography>
@@ -959,7 +1061,7 @@ function InnerTopologyView() {
                 </Button>
               </Box>
 
-              {/* SEÇÃO: VARIÁVEIS INDIVIDUAIS DA PIPELINE */}
+              {/* Variáveis Individuais */}
               <Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1009,7 +1111,6 @@ function InnerTopologyView() {
                 </TableContainer>
               </Box>
 
-              {/* Informações de Repositório */}
               <Box sx={{ p: 1.5, backgroundColor: '#0f141d', borderRadius: 2, border: '1px solid #1e293b' }}>
                 <Typography variant="caption" sx={{ color: '#64748b', display: 'block' }}>
                   Branch: <b style={{ color: '#cbd5e1' }}>{inspectPipeline.branch}</b>
@@ -1026,7 +1127,7 @@ function InnerTopologyView() {
         )}
       </Drawer>
 
-      {/* 2. GAVETA DE DETALHES DO VARIABLE GROUP (LISTA DE VARIÁVEIS EM TABELA) */}
+      {/* 2. GAVETA DE DETALHES DO VARIABLE GROUP */}
       <Drawer
         anchor="right"
         open={Boolean(inspectVariableGroup)}
@@ -1079,7 +1180,6 @@ function InnerTopologyView() {
                 {inspectVariableGroup.description}
               </Typography>
 
-              {/* Tabela de Variáveis do Grupo */}
               <Box>
                 <Typography variant="subtitle2" fontWeight={800} sx={{ color: '#c7d2fe', mb: 1.5 }}>
                   Variáveis Configuradas ({inspectVariableGroup.variables.length})
@@ -1125,7 +1225,7 @@ function InnerTopologyView() {
         )}
       </Drawer>
 
-      {/* 3. GAVETA DE DETALHES DO ENVIRONMENT (ALTERAÇÃO DE COR DO TÍTULO & APROVAÇÕES) */}
+      {/* 3. GAVETA DE DETALHES DO ENVIRONMENT */}
       <Drawer
         anchor="right"
         open={Boolean(inspectEnvironment)}
@@ -1183,7 +1283,6 @@ function InnerTopologyView() {
                 {inspectEnvironment.description}
               </Typography>
 
-              {/* SELEÇÃO DA COR DO TÍTULO */}
               <Box sx={{ p: 2, backgroundColor: '#18212e', borderRadius: 2, border: '1px solid #253347' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                   <PaletteIcon sx={{ color: inspectEnvironment.titleColor || '#34d399' }} />
@@ -1219,7 +1318,6 @@ function InnerTopologyView() {
                 </Stack>
               </Box>
 
-              {/* Aprovações */}
               <Box sx={{ p: 1.5, backgroundColor: '#0f141d', borderRadius: 2, border: '1px solid #1e293b' }}>
                 <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mb: 0.5 }}>
                   Approval Gates
@@ -1309,7 +1407,7 @@ function InnerTopologyView() {
         </DialogActions>
       </Dialog>
 
-      {/* 6. MODAL PARA CRIAR GRUPO */}
+      {/* 6. MODAL PARA CRIAR / EDITAR GRUPO */}
       <Dialog
         open={isGroupModalOpen}
         onClose={() => setIsGroupModalOpen(false)}
@@ -1319,7 +1417,7 @@ function InnerTopologyView() {
       >
         <DialogTitle sx={{ pb: 1, pt: 2.5 }}>
           <Typography variant="h6" fontWeight={800} sx={{ color: '#fff' }}>
-            Criar Novo Grupo / Repositório
+            {editingGroupId ? 'Editar Grupo / Repositório' : 'Criar Novo Grupo / Repositório'}
           </Typography>
         </DialogTitle>
         <DialogContent>
@@ -1377,8 +1475,42 @@ function InnerTopologyView() {
           <Button onClick={() => setIsGroupModalOpen(false)} sx={{ color: '#94a3b8' }}>
             Cancelar
           </Button>
-          <Button variant="contained" onClick={handleCreateGroup} sx={{ backgroundColor: '#0284c7', fontWeight: 700 }}>
-            Criar Grupo
+          <Button variant="contained" onClick={handleSaveGroupModal} sx={{ backgroundColor: '#0284c7', fontWeight: 700 }}>
+            {editingGroupId ? 'Salvar Alterações' : 'Criar Grupo'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 7. MODAL DE CONFIRMAÇÃO: ELIMINAR GRUPO */}
+      <Dialog
+        open={Boolean(groupToDeleteId)}
+        onClose={() => setGroupToDeleteId(null)}
+        PaperProps={{
+          sx: { backgroundColor: '#131924', border: '1px solid #283548', borderRadius: 3, maxWidth: 420 }
+        }}
+      >
+        <DialogTitle sx={{ pb: 1, pt: 2.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
+            <DeleteOutlineIcon sx={{ color: '#ef4444' }} />
+            <Typography variant="h6" fontWeight={800} sx={{ color: '#fff' }}>
+              Eliminar Grupo
+            </Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2, backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#fca5a5' }}>
+            Tem a certeza de que deseja eliminar esta área de grupo?
+          </Alert>
+          <Typography variant="caption" sx={{ color: '#94a3b8' }}>
+            Nota: Os componentes existentes (pipelines, variable groups e environments) continuarão no canvas.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setGroupToDeleteId(null)} sx={{ color: '#94a3b8' }}>
+            Cancelar
+          </Button>
+          <Button variant="contained" color="error" onClick={handleConfirmDeleteGroup} sx={{ fontWeight: 700 }}>
+            Eliminar Grupo
           </Button>
         </DialogActions>
       </Dialog>
