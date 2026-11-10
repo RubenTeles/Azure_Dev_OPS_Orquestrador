@@ -1,0 +1,66 @@
+---------------------------------------
+Project
+ │
+ ├── Repositories
+ │
+ ├── Pipelines
+ │     │
+ │     ├── Variable Groups
+ │     │
+ │     └── Environments
+ │
+ ├── Variable Groups
+ │
+ └── Environments
+        │
+        └── Authorized Pipelines
+----------------------------------------
+
+
+1º Conseguir todos os projetos: https://vmsys-tfs01/DefaultCollection/_apis/projects
+{Project} = value.id
+
+Outras informaçoes:
+      "id": "3724ab5d-f7b5-4765-9965-49981b201a80",
+      "name": "VW Germany",
+      "url": "https://vmsys-tfs01/DefaultCollection/_apis/projects/3724ab5d-f7b5-4765-9965-49981b201a80",
+
+2º Conseguir os Repositorios: https://vmsys-tfs01/DefaultCollection/{Project}/_apis/git/repositories
+
+3º Conseguir a pipeline através do projeto: https://vmsys-tfs01/DefaultCollection/{Project}/_apis/pipelines
+{Pipeline} = 
+      "id": 1256,
+      "name": "BAI - Deployer Installer",
+      "folder": "\\BAI"
+      "_links": {
+        "web": {
+          "href": "https://vmsys-tfs01/DefaultCollection/0f5ffa6d-c954-4818-9006-0404acefa918/_build/definition?definitionId=1256"
+       }}
+
+
+o "count": 3, pertence ao objecto Projeto.
+
+4º Conseguir Mais informações da pipeline atravez do project e o id da pipeline: https://vmsys-tfs01/DefaultCollection/{Project}/_apis/build/definitions/{Pipeline}?api-version=7.0
+
+Contem as variaveis groups e os seus ids: 
+ {"variableGroups" -> "id": 102 } 
+
+Com isto da para ter uma ligação com a variaveis groups que obtemos:
+
+5º Obter as variveis groups atraves do Project ID: https://vmsys-tfs01/DefaultCollection/{Project}/_apis/distributedtask/variablegroups
+
+E conseguimos listar as Variaveis groups e saber a quais pertencem atravez da pipeline.
+
+6º Obter os Environments atraves do project: https://vmsys-tfs01/DefaultCollection/{Project}/_apis/distributedtask/environments
+
+Com isto temos a lista de cada environment e conseguimos o id 
+{environment} =  "value" -> "id": 44,
+
+7º Obter a conexão entre Environment e pipeline: https://vmsys-tfs01/DefaultCollection/{Project}/_apis/pipelines/pipelinepermissions/environment/{environment}
+
+Onde contem as pipelines que teem permissoes no environment: "pipelines": []
+
+
+Com isto conseguimos ter o graph completo.
+
+

@@ -3,3 +3,4 @@ export async function invoke<T>(command:string,args?:Record<string,unknown>):Pro
 export const loadActions=()=>invoke<ActionDefinition[]>('list_actions');
 export const saveWorkflow=(workflow:unknown)=>invoke<void>('save_workflow',{workflow});
 export const executeWorkflow=(workflow:unknown)=>invoke<string[]>('execute_workflow',{workflow});
+export const runPowerShellScript=(script:string,args:Record<string,unknown>)=>invoke<string>('run_powershell_script',{script,args});

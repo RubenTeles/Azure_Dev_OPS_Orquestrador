@@ -51,6 +51,7 @@ export function Dashboard({ onNavigateToTopology }: { onNavigateToTopology?: () 
     runGetScript,
     isExecutingGet,
     addLog,
+    logs,
     exportOfflineMockFile,
     importOfflineMockFile
   } = useStudioStore();
@@ -557,6 +558,20 @@ Invoke-RestMethod -Uri $projectsUrl -Headers $headers -Method Get`}
             ))}
           </Grid2>
         )}
+
+        <Card sx={{ backgroundColor: '#0a0e14', border: '1px solid #233145', borderRadius: 2.5 }}>
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+              <TerminalIcon sx={{ color: '#38bdf8' }} />
+              <Typography variant="h6" fontWeight={700} sx={{ color: '#f8fafc' }}>Logs de execução</Typography>
+            </Box>
+            <Box sx={{ maxHeight: 220, overflowY: 'auto', p: 1.5, backgroundColor: '#05080c', borderRadius: 1 }}>
+              {logs.length === 0 ? <Typography sx={{ color: '#64748b', fontFamily: 'monospace' }}>Sem logs.</Typography> : logs.slice(-100).map((log, index) => (
+                <Typography key={`${log}-${index}`} component="div" sx={{ color: log.includes('[ERRO]') ? '#f87171' : '#94a3b8', fontFamily: 'monospace', fontSize: '0.75rem', whiteSpace: 'pre-wrap' }}>{log}</Typography>
+              ))}
+            </Box>
+          </CardContent>
+        </Card>
       </Stack>
 
       {/* Modal para editar e testar o Script de Discovery GET */}

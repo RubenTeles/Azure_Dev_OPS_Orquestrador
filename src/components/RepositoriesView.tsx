@@ -88,6 +88,9 @@ const COLOR_PALETTE = [
   '#f97316'  // Laranja
 ];
 
+const graphId = (kind: 'vg' | 'pipeline' | 'env', id: string) => `${kind}-${id}`;
+const resourceId = (id: string) => id.replace(/^(vg|pipeline|env)-/, '');
+
 function InnerTopologyView() {
   const {
     projects,
@@ -211,7 +214,7 @@ function InnerTopologyView() {
     // 1. Variable Groups (Coluna Esquerda, x: 60, zIndex: 10)
     currentVariableGroups.forEach((vg, index) => {
       generatedNodes.push({
-        id: vg.id,
+        id: graphId('vg', vg.id),
         type: 'variableGroup',
         position: { x: 60, y: 70 + index * 140 },
         data: {
@@ -231,7 +234,7 @@ function InnerTopologyView() {
     // 2. Pipelines (Coluna Central, x: 440, zIndex: 10)
     currentPipelines.forEach((pipe, index) => {
       generatedNodes.push({
-        id: pipe.id,
+        id: graphId('pipeline', pipe.id),
         type: 'pipeline',
         position: { x: 440, y: 50 + index * 175 },
         data: {
@@ -256,9 +259,9 @@ function InnerTopologyView() {
         const vgExists = currentVariableGroups.some((v) => v.id === vgId);
         if (vgExists) {
           generatedEdges.push({
-            id: `edge-${vgId}-${pipe.id}`,
-            source: vgId,
-            target: pipe.id,
+            id: `edge-vg-${vgId}-pipeline-${pipe.id}`,
+            source: graphId('vg', vgId),
+            target: graphId('pipeline', pipe.id),
             animated: Boolean(pipe.schedule?.hasSchedule),
             style: {
               stroke: '#818cf8',
@@ -273,9 +276,9 @@ function InnerTopologyView() {
         const envExists = currentEnvironments.some((e) => e.id === envId);
         if (envExists) {
           generatedEdges.push({
-            id: `edge-${pipe.id}-${envId}`,
-            source: pipe.id,
-            target: envId,
+            id: `edge-pipeline-${pipe.id}-env-${envId}`,
+            source: graphId('pipeline', pipe.id),
+            target: graphId('env', envId),
             animated: Boolean(pipe.schedule?.hasSchedule),
             style: {
               stroke: '#34d399',
@@ -289,7 +292,7 @@ function InnerTopologyView() {
     // 3. Environments (Coluna Direita, x: 860, zIndex: 10)
     currentEnvironments.forEach((env, index) => {
       generatedNodes.push({
-        id: env.id,
+        id: graphId('env', env.id),
         type: 'environment',
         position: { x: 860, y: 70 + index * 140 },
         data: {
@@ -405,17 +408,19 @@ function InnerTopologyView() {
     if (!pendingConnection) return;
     const { source, target } = pendingConnection;
     if (!source || !target) return;
+    const sourceResourceId = resourceId(source);
+    const targetResourceId = resourceId(target);
 
     const isVgToPipe =
-      currentVariableGroups.some((v) => v.id === source) &&
-      currentPipelines.some((p) => p.id === target);
+      source.startsWith('vg-') && currentVariableGroups.some((v) => v.id === sourceResourceId) &&
+      target.startsWith('pipeline-') && currentPipelines.some((p) => p.id === targetResourceId);
 
     const isPipeToEnv =
-      currentPipelines.some((p) => p.id === source) &&
-      currentEnvironments.some((e) => e.id === target);
+      source.startsWith('pipeline-') && currentPipelines.some((p) => p.id === sourceResourceId) &&
+      target.startsWith('env-') && currentEnvironments.some((e) => e.id === targetResourceId);
 
     if (isVgToPipe) {
-      connectVariableGroupToPipeline(source, target);
+      connectVariableGroupToPipeline(sourceResourceId, targetResourceId);
       setEdges((eds) => [
         ...eds,
         {
@@ -428,7 +433,7 @@ function InnerTopologyView() {
       ]);
       setToastMessage('Variable Group vinculado à Pipeline!');
     } else if (isPipeToEnv) {
-      connectPipelineToEnvironment(source, target);
+      connectPipelineToEnvironment(sourceResourceId, targetResourceId);
       setEdges((eds) => [
         ...eds,
         {
@@ -457,11 +462,13 @@ function InnerTopologyView() {
     if (!pendingEdgeRemoval) return;
     const { source, target, id } = pendingEdgeRemoval;
 
-    if (currentVariableGroups.some((v) => v.id === source)) {
-      disconnectVariableGroupFromPipeline(source, target);
+    const sourceResourceId = resourceId(source);
+    const targetResourceId = resourceId(target);
+    if (source.startsWith('vg-') && currentVariableGroups.some((v) => v.id === sourceResourceId)) {
+      disconnectVariableGroupFromPipeline(sourceResourceId, targetResourceId);
     }
-    if (currentEnvironments.some((e) => e.id === target)) {
-      disconnectPipelineFromEnvironment(source, target);
+    if (target.startsWith('env-') && currentEnvironments.some((e) => e.id === targetResourceId)) {
+      disconnectPipelineFromEnvironment(sourceResourceId, targetResourceId);
     }
 
     setEdges((eds) => eds.filter((e) => e.id !== id));
@@ -473,18 +480,18 @@ function InnerTopologyView() {
   const handleNodeClick: NodeMouseHandler = useCallback(
     (_, node) => {
       if (node.type === 'pipeline') {
-        const pipe = currentPipelines.find((p) => p.id === node.id);
+        const pipe = currentPipelines.find((p) => p.id === resourceId(node.id));
         if (pipe) {
           setInspectPipeline(pipe);
           setAgentNotesInput(pipe.agent?.notes || '');
         }
       } else if (node.type === 'variableGroup') {
-        const vg = currentVariableGroups.find((v) => v.id === node.id);
+        const vg = currentVariableGroups.find((v) => v.id === resourceId(node.id));
         if (vg) {
           setInspectVariableGroup(vg);
         }
       } else if (node.type === 'environment') {
-        const env = currentEnvironments.find((e) => e.id === node.id);
+        const env = currentEnvironments.find((e) => e.id === resourceId(node.id));
         if (env) {
           setInspectEnvironment(env);
         }

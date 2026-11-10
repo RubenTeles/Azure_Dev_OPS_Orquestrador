@@ -32,15 +32,83 @@ import {
   MOCK_ENVIRONMENTS,
   MOCK_TOPOLOGY_GROUPS
 } from './mockData';
+import { runPowerShellScript } from './api';
 
 const SETTINGS_STORAGE_KEY = 'devops_studio_settings';
 const SAVED_TOPOLOGY_STORAGE_KEY = 'devops_studio_saved_topologies';
 const OFFLINE_MOCK_STORAGE_KEY = 'devops_studio_offline_mock';
 
+function normalizeOfflineData(parsed: any) {
+  const unwrap = (source: any) => Array.isArray(source)
+    ? source.flatMap((item: any) => Array.isArray(item?.value) ? item.value : [item])
+    : [];
+  const normalizeVariables = (variables: any) => Array.isArray(variables)
+    ? variables
+    : Object.entries(variables || {}).map(([name, variable]: [string, any]) => ({
+        name,
+        value: variable?.value == null ? '' : String(variable.value),
+        isSecret: Boolean(variable?.isSecret),
+        allowOverride: variable?.allowOverride
+      }));
+  const rawProjects = unwrap(parsed.projects);
+  const rawRepositories = unwrap(parsed.repositories);
+  const rawPipelines = unwrap(parsed.pipelines);
+  const projects: AzureProject[] = rawProjects.map((project: any) => ({
+    id: String(project.id),
+    name: project.name || `Projeto ${project.id}`,
+    description: project.description || '',
+    visibility: project.visibility === 'public' ? 'public' : 'private',
+    state: project.state || 'wellFormed',
+    url: project.url || '',
+    lastUpdateTime: project.lastUpdateTime || '',
+    repositoriesCount: rawRepositories.filter((repo: any) => String(repo.project?.id) === String(project.id)).length,
+    pipelinesCount: rawPipelines.filter((pipeline: any) => String(pipeline.projectId || pipeline.project?.id) === String(project.id)).length
+  }));
+  const rawVariableGroups = unwrap(parsed.variableGroups);
+  const rawEnvironments = unwrap(parsed.environments);
+  const usedPipelineIds = new Set<string>();
+  const pipelines: AzurePipeline[] = rawPipelines.map((pipeline: any, index: number) => {
+    const sourceId = String(pipeline.id);
+    let id = sourceId;
+    while (usedPipelineIds.has(id)) id = `${sourceId}-${index}`;
+    usedPipelineIds.add(id);
+    const isDuplicateSourceId = id !== sourceId;
+    return {
+    id, projectId: String(pipeline.projectId || pipeline.project?.id), name: pipeline.name || `Pipeline ${pipeline.id}`,
+    folder: pipeline.folder || '\\', status: pipeline.status || 'notStarted', result: pipeline.result || 'none',
+    repository: pipeline.repository?.name || pipeline.repository || '', branch: pipeline.branch || '', lastRunDate: pipeline.lastRunDate || '',
+    duration: pipeline.duration || '', author: pipeline.author || '',
+    variableGroupIds: (pipeline.variableGroups || []).map((group: any) => {
+      const matched = rawVariableGroups.find((candidate: any) => String(candidate.id) === String(group.id) || candidate.name === group.name);
+      return String(matched?.id || group.id);
+    }),
+    environmentIds: isDuplicateSourceId ? [] : rawEnvironments.filter((environment: any) => (environment.pipelines || []).some((item: any) => String(item.id) === sourceId)).map((environment: any) => String(environment.id)),
+    variables: normalizeVariables(pipeline.variables), agent: pipeline.agent || { pool: '', agentName: '', os: '', status: 'offline', notes: '' }, azureUrl: pipeline.url
+    };
+  });
+  const variableGroups: Record<string, VariableGroup[]> = {};
+  projects.forEach((project) => {
+    const ids = new Set(pipelines.filter((pipeline) => pipeline.projectId === project.id).flatMap((pipeline) => pipeline.variableGroupIds));
+    variableGroups[project.id] = rawVariableGroups.filter((group: any) => String(group.projectId || group.project?.id || '') === project.id || projects.length === 1 || ids.has(String(group.id))).map((group: any) => ({
+      id: String(group.id), projectId: String(group.projectId || group.project?.id || project.id), name: group.name || `Variable Group ${group.id}`, description: group.description || '',
+      variablesCount: Array.isArray(group.variables) ? group.variables.length : Object.keys(group.variables || {}).length,
+      isSecret: group.isSecret || false,
+      variables: normalizeVariables(group.variables),
+      azureUrl: group.url
+    }));
+  });
+  const environments: Record<string, Environment[]> = {};
+  rawEnvironments.forEach((environment: any) => {
+    const projectId = String(environment.project?.id || projects[0]?.id || '');
+    (environments[projectId] ||= []).push({ id: String(environment.id), name: environment.name || `Environment ${environment.id}`, description: environment.description || '', approvalsRequired: environment.approvalsRequired || false, titleColor: environment.titleColor, azureUrl: environment.url });
+  });
+  return { projects, pipelines, variableGroups, environments, topologyGroups: parsed.topologyGroups || {}, repositories: rawRepositories };
+}
+
 const initialOfflineData = (() => {
   try {
     const saved = localStorage.getItem(OFFLINE_MOCK_STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
+    if (saved) return normalizeOfflineData(JSON.parse(saved));
   } catch {
     // fallback
   }
@@ -58,6 +126,7 @@ const initialSettings: SettingsData = (() => {
     organization: 'contoso-cloud',
     project: 'Enterprise-Core-Banking',
     pat: '',
+    authMode: 'Pat',
     defaultBranch: 'main',
     isConnected: false,
     customGetScript: DEFAULT_GET_POWERSHELL_SCRIPT
@@ -165,6 +234,7 @@ interface StudioState {
   loadSimpleBatchWorkflow: () => void;
   executeWorkflow: () => Promise<void>;
   runGetScript: (customScript?: string) => Promise<void>;
+  mapProjectResources: (projectIds: string[]) => Promise<void>;
 
   // Ações para Topologia, Grupos e Conexões
   addTopologyGroup: (projectId: string, group: { name: string; description?: string; color: string; repository?: string }) => TopologyGroup;
@@ -190,12 +260,12 @@ interface StudioState {
 export const useStudioStore = create<StudioState>((set, get) => ({
   settings: initialSettings,
   showPatModal: !initialSettings.pat,
-  selectedProjectId: 'proj-001',
-  projects: initialOfflineData?.projects || MOCK_PROJECTS,
-  pipelines: initialOfflineData?.pipelines || MOCK_PIPELINES,
-  variableGroups: initialOfflineData?.variableGroups || MOCK_VARIABLE_GROUPS,
-  environments: initialOfflineData?.environments || MOCK_ENVIRONMENTS,
-  topologyGroups: initialOfflineData?.topologyGroups || MOCK_TOPOLOGY_GROUPS,
+  selectedProjectId: initialOfflineData?.projects[0]?.id || '',
+  projects: initialOfflineData?.projects || [],
+  pipelines: initialOfflineData?.pipelines || [],
+  variableGroups: initialOfflineData?.variableGroups || {},
+  environments: initialOfflineData?.environments || {},
+  topologyGroups: initialOfflineData?.topologyGroups || {},
   savedTopologies: initialSavedTopologies,
   dashboard: MOCK_DASHBOARD_METRICS,
   nodes: INITIAL_BATCH_WORKFLOW_NODES,
@@ -218,6 +288,32 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       }
       return { settings: merged };
     });
+  },
+
+  mapProjectResources: async (projectIds) => {
+    const { settings, addLog } = get();
+    set({ isExecutingGet: true });
+    try {
+      const results = await Promise.all(projectIds.map(async (projectId) => {
+        const output = await runPowerShellScript('scripts/Get-AzureDevOpsProjectResources.ps1', {
+          Organization: settings.organization, ProjectId: projectId, AuthMode: settings.authMode, Pat: settings.pat
+        });
+        return JSON.parse(output || '{}');
+      }));
+      const pipelines = results.flatMap((item) => (item.pipelines || []).map((pipeline: any) => ({ ...pipeline, projectId: item.projectId }))).map((pipeline: any) => ({
+        ...pipeline, projectId: pipeline.projectId || '', folder: pipeline.folder || '\\', status: 'notStarted', result: 'none',
+        repository: '', branch: '', lastRunDate: '', duration: '', author: '', variableGroupIds: [], environmentIds: [], variables: [],
+        agent: { pool: '', agentName: '', os: '', status: 'offline', notes: '' }
+      }));
+      const variableGroups = Object.fromEntries(results.map((item) => [item.projectId, item.variableGroups || []]));
+      const environments = Object.fromEntries(results.map((item) => [item.projectId, item.environments || []]));
+      set({ pipelines, variableGroups, environments, dashboard: { ...get().dashboard, pipelines: pipelines.length, variableGroups: Object.values(variableGroups).flat().length, environments: Object.values(environments).flat().length }, isExecutingGet: false });
+      addLog(`[OK] Recursos mapeados para ${projectIds.length} projeto(s).`);
+    } catch (error) {
+      set({ isExecutingGet: false });
+      addLog(`[ERRO] Falha no mapeamento: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
   },
 
   setShowPatModal: (show) => set({ showPatModal: show }),
@@ -478,16 +574,26 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         throw new Error('Formato inválido: array de projetos não encontrado');
       }
 
+      const { projects, pipelines, variableGroups, environments, topologyGroups, repositories } = normalizeOfflineData(parsed);
+      const savedTopologies = { ...get().savedTopologies };
+      projects.forEach((project) => delete savedTopologies[project.id]);
+      localStorage.setItem(SAVED_TOPOLOGY_STORAGE_KEY, JSON.stringify(savedTopologies));
+
       set({
-        projects: parsed.projects,
-        pipelines: parsed.pipelines || [],
-        variableGroups: parsed.variableGroups || {},
-        environments: parsed.environments || {},
-        topologyGroups: parsed.topologyGroups || {},
+        projects,
+        selectedProjectId: projects[0]?.id || '',
+        pipelines,
+        variableGroups,
+        environments,
+        topologyGroups,
+        savedTopologies,
         dashboard: {
           ...get().dashboard,
-          projects: parsed.projects.length,
-          pipelines: (parsed.pipelines || []).length
+          projects: projects.length,
+          pipelines: pipelines.length,
+          variableGroups: Object.values(variableGroups).flat().length,
+          environments: Object.values(environments).flat().length,
+          repositories: repositories.length
         }
       });
 
@@ -498,7 +604,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         console.error('Falha ao persistir mock offline:', err);
       }
 
-      get().addLog(`[OFFLINE MOCK] Carregados ${parsed.projects.length} projetos e ${(parsed.pipelines || []).length} pipelines para modo offline.`);
+      get().addLog(`[OFFLINE MOCK] Carregados ${projects.length} projetos e ${pipelines.length} pipelines para modo offline.`);
       return true;
     } catch (e: any) {
       get().addLog(`[ERRO OFFLINE MOCK] Falha ao importar ficheiro de mock: ${e.message}`);
@@ -542,27 +648,23 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   runGetScript: async (customScript) => {
     const { settings, addLog } = get();
     set({ isExecutingGet: true });
-    addLog(`>>> Executando Script PowerShell de Discovery (GET)...`);
-    addLog(`Conectando em https://dev.azure.com/${settings.organization}...`);
-
-    await new Promise((r) => setTimeout(r, 600));
-    addLog(`GET https://dev.azure.com/${settings.organization}/_apis/projects?api-version=7.1-preview.4`);
-    await new Promise((r) => setTimeout(r, 700));
-    addLog(`GET https://dev.azure.com/${settings.organization}/${settings.project}/_apis/pipelines?api-version=7.1-preview.1`);
-    await new Promise((r) => setTimeout(r, 500));
-
-    set({
-      projects: MOCK_PROJECTS,
-      pipelines: MOCK_PIPELINES,
-      dashboard: {
-        ...MOCK_DASHBOARD_METRICS,
-        projects: MOCK_PROJECTS.length,
-        pipelines: MOCK_PIPELINES.length
-      },
-      isExecutingGet: false
-    });
-
-    addLog(`[OK] Discovery finalizado com sucesso!`);
+    addLog(`[GET][INÍCIO] Script: scripts/Get-AzureDevOpsProjects.ps1`);
+    addLog(`[GET][CONFIG] Organização: ${settings.organization}`);
+    addLog(`[GET][CONFIG] Autenticação: PAT`);
+    try {
+      addLog('[GET][EXECUÇÃO] A iniciar PowerShell...');
+      const output = await runPowerShellScript('scripts/Get-AzureDevOpsProjects.ps1', {
+        Organization: settings.organization, AuthMode: settings.authMode, Pat: settings.pat
+      });
+      addLog(`[GET][RESPOSTA] ${output.length} caracteres recebidos.`);
+      const projects: AzureProject[] = JSON.parse(output || '[]');
+      set({ projects, selectedProjectId: projects[0]?.id || '', dashboard: { ...get().dashboard, projects: projects.length }, isExecutingGet: false });
+      addLog(`[GET][SUCESSO] ${projects.length} projetos obtidos pelo script PowerShell.`);
+    } catch (error) {
+      set({ isExecutingGet: false });
+      addLog(`[GET][ERRO] ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
   },
 
   executeWorkflow: async () => {

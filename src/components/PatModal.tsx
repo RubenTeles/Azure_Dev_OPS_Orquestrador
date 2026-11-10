@@ -12,49 +12,56 @@ import {
   IconButton,
   InputAdornment,
   Divider,
-  Stack
+  Stack,
+  FormControlLabel, Checkbox, CircularProgress
 } from '@mui/material';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import KeyIcon from '@mui/icons-material/VpnKey';
 import CloudQueueIcon from '@mui/icons-material/CloudQueue';
-import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import { useStudioStore } from '../store';
 
 export function PatModal() {
-  const { settings, setSettings, showPatModal, setShowPatModal, runGetScript } = useStudioStore();
+  const { settings, setSettings, showPatModal, setShowPatModal, runGetScript, mapProjectResources, projects, isExecutingGet } = useStudioStore();
 
   const [org, setOrg] = useState(settings.organization || 'contoso-devops');
-  const [project, setProject] = useState(settings.project || 'Enterprise-Core-Banking');
   const [pat, setPat] = useState(settings.pat || '');
+  const [step, setStep] = useState(settings.pat || settings.isConnected ? 2 : 1);
+  const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
-  const handleFillDemo = () => {
-    setOrg('contoso-cloud');
-    setProject('Enterprise-Core-Banking');
-    setPat('mock_pat_9a8b7c6d5e4f3a2b1c0d_demo_azure_devops');
-    setError('');
-  };
-
   const handleSaveAndRunGet = async () => {
     if (!pat.trim()) {
-      setError('Por favor insira um Personal Access Token (PAT) ou utilize a demonstração.');
+      setError('Por favor insira um Personal Access Token (PAT).');
       return;
     }
 
     setSettings({
       organization: org.trim(),
-      project: project.trim(),
       pat: pat.trim(),
+      authMode: 'Pat',
       isConnected: true
     });
 
-    setShowPatModal(false);
+    try {
+      await runGetScript();
+      setStep(2);
+      setError('');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Falha ao executar o script PowerShell.');
+    }
+  };
 
-    // Executa o primeiro GET imediatamente para popular o Dashboard
-    await runGetScript();
+  const handleMap = async () => {
+    if (!selectedProjects.length) { setError('Selecione pelo menos um projeto.'); return; }
+    try {
+      await mapProjectResources(selectedProjects);
+      setShowPatModal(false);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Falha ao mapear os recursos.');
+    }
   };
 
   return (
@@ -62,7 +69,7 @@ export function PatModal() {
       open={showPatModal}
       onClose={() => {
         // Se já tiver PAT, permite fechar; se não, incentiva a adicionar ou usar mock
-        if (settings.pat) setShowPatModal(false);
+        if (settings.isConnected) setShowPatModal(false);
       }}
       maxWidth="sm"
       fullWidth
@@ -96,7 +103,7 @@ export function PatModal() {
               Configuração Azure DevOps
             </Typography>
             <Typography variant="caption" sx={{ color: '#94a3b8' }}>
-              Adicione o seu Personal Access Token (PAT) para efetuar o primeiro GET
+              Recolha os dados em passos, sempre através de scripts PowerShell do projeto
             </Typography>
           </div>
         </Box>
@@ -107,7 +114,7 @@ export function PatModal() {
       <DialogContent sx={{ pt: 3 }}>
         <Stack spacing={2.5}>
           <Alert severity="info" sx={{ backgroundColor: 'rgba(2, 132, 199, 0.12)', color: '#bae6fd', border: '1px solid rgba(2, 132, 199, 0.3)' }}>
-            Nenhum PAT foi detectado. Para consultar os projetos e pipelines no Dashboard, configure as credenciais abaixo ou use o botão de Demonstração.
+            Passo {step} de 3 — {step === 1 ? 'Autenticação e organização' : step === 2 ? 'Projetos encontrados' : 'Mapear recursos'}
           </Alert>
 
           {error && (
@@ -116,6 +123,8 @@ export function PatModal() {
             </Alert>
           )}
 
+          {step === 1 && <>
+          <Alert severity="info">A autenticação desta aplicação é feita exclusivamente através de um Personal Access Token (PAT).</Alert>
           <TextField
             label="Organização Azure DevOps"
             placeholder="ex: contoso ou https://dev.azure.com/contoso"
@@ -130,15 +139,6 @@ export function PatModal() {
                 </InputAdornment>
               )
             }}
-          />
-
-          <TextField
-            label="Projeto Padrão"
-            placeholder="ex: Enterprise-Core-Banking"
-            value={project}
-            onChange={(e) => setProject(e.target.value)}
-            fullWidth
-            size="small"
           />
 
           <TextField
@@ -164,27 +164,19 @@ export function PatModal() {
             }}
           />
 
-          <Box sx={{ p: 1.5, backgroundColor: '#0d131b', borderRadius: 2, border: '1px dashed #334155' }}>
-            <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 1 }}>
-              💡 Dica rápida para testes:
-            </Typography>
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<AutoFixHighIcon />}
-              onClick={handleFillDemo}
-              sx={{ color: '#38bdf8', borderColor: '#0284c7' }}
-            >
-              Preencher com Token de Demonstração (Mock)
-            </Button>
-          </Box>
+          </>}
+          {step === 2 && <Stack spacing={1}>
+            <Typography sx={{ color: '#cbd5e1' }}>Passo 2: o script devolveu estes projetos:</Typography>
+            {projects.map((project) => <FormControlLabel key={project.id} control={<Checkbox checked={selectedProjects.includes(project.id)} onChange={(event) => setSelectedProjects((current) => event.target.checked ? [...current, project.id] : current.filter((id) => id !== project.id))} />} label={`${project.name} (${project.id})`} />)}
+          </Stack>}
+          {step === 3 && <Alert severity="success">Selecione os projetos no passo anterior e execute o script de mapeamento para obter pipelines, environments e variable groups.</Alert>}
         </Stack>
       </DialogContent>
 
       <Divider sx={{ borderColor: '#243042' }} />
 
       <DialogActions sx={{ p: 2.5, justifyContent: 'space-between' }}>
-        {settings.pat ? (
+        {step > 1 ? (
           <Button onClick={() => setShowPatModal(false)} sx={{ color: '#94a3b8' }}>
             Cancelar
           </Button>
@@ -194,15 +186,17 @@ export function PatModal() {
         <Button
           variant="contained"
           startIcon={<PlayArrowIcon />}
-          onClick={handleSaveAndRunGet}
+          onClick={step === 1 ? handleSaveAndRunGet : handleMap}
+          disabled={isExecutingGet}
           sx={{
             backgroundColor: '#0078d4',
             '&:hover': { backgroundColor: '#0284c7' },
             fontWeight: 700,
             px: 3
           }}
-        >
-          Salvar e Executar Primeiro GET
+          >
+          {isExecutingGet ? <CircularProgress size={18} color="inherit" /> : null}
+          {step === 1 ? 'Executar Passo 2 — Obter Projetos' : 'Executar Passo 3 — Mapear Recursos'}
         </Button>
       </DialogActions>
     </Dialog>

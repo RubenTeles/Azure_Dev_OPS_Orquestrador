@@ -30,6 +30,7 @@ export interface VariableGroupVariable {
 
 export interface VariableGroup {
   id: string;
+  projectId?: string;
   name: string;
   description: string;
   variablesCount: number;
@@ -148,6 +149,7 @@ export interface SettingsData {
   organization: string;
   project: string;
   pat: string;
+  authMode: 'Pat' | 'Microsoft';
   defaultBranch: string;
   isConnected: boolean;
   customGetScript: string;

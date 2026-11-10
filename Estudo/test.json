@@ -1,0 +1,268 @@
+{
+  "projects": [{
+    "count": 1,
+    "value": [
+    {
+      "id": 1,
+      "name": "AFRICA-Market",
+      "url": "https://www.azure-dev-ops.com/projects/1",
+      "visibility": "private"
+    }
+  ]
+  }],
+
+  "repositories": [{
+    "count": 1,
+    "value": [
+    {
+      "id": 1,
+      "name": "BAI",
+      "url": "https://www.azure-dev-ops.com/repositories/1",
+
+      "project": {
+        "id": 1,
+        "name": "AFRICA-Market",
+        "url": "https://www.azure-dev-ops.com/projects/1",
+        "visibility": "private"
+      }
+    }
+  ]
+  }],
+
+  "pipelines": [{
+    "count": 3,
+    "value": [
+      {
+        "url": "https://www.azure-dev-ops.com/1?revision=2",
+        "id": 1,
+        "name": "BAI - Deployer Installer",
+        "folder": "\\BAI",
+        "variableGroups": [
+          {
+            "name": "Deployer_Email_BAI",
+            "description": "Group for Email for BAI repository",
+            "id": 2
+          },
+          {
+            "name": "Deployer_DEV_BAI",
+            "description": "Group for DEV environment and BAI repository",
+            "id": 101
+          }
+        ],
+        "project": {
+          "id": 1,
+          "name": "AFRICA-Market",
+          "url": "https://www.azure-dev-ops.com/projects/1",
+          "visibility": "private"
+        }
+    },
+    {
+      "url": "https://www.azure-dev-ops.com/2?revision=18",
+      "id": 2,
+      "name": "BAI - DEV - Compile (8082)",
+      "folder": "\\BAI",
+      "variables": {
+        "Environment": {
+          "value": "BAI_DEV_8082"
+        },
+        "IIS_Pool": {
+          "value": "xxxxxx"
+        },
+        "Port_Name": {
+          "value": "xxx-xx-8082"
+        },
+        "ServerFolder": {
+          "value": "\\\\asdasxx"
+        }
+      },
+      "variableGroups": [
+        {
+          "type": "Vsts",
+          "name": "BAI_Variables_Environment",
+          "description": "Group for BAI repository",
+          "id": 105
+        },
+        {
+          "type": "Vsts",
+          "name": "Deployer_DEV_BAI",
+          "description": "Group for DEV environment and BAI repository",
+          "id": 101
+        }
+      ],
+      "project": {
+        "id": 1,
+        "name": "AFRICA-Market",
+        "url": "https://www.azure-dev-ops.com/projects/1",
+        "visibility": "private"
+      }
+    },
+    {
+      "url": "https://www.azure-dev-ops.com/2?revision=7",
+      "id": 3,
+      "name": "BAI - IIS Manager",
+      "folder": "\\",
+      "variableGroups": [
+        {
+          "type": "Vsts",
+          "name": "Deployer_DEV_BAI",
+          "description": "Group for DEV environment and BAI repository",
+          "id": 101
+        }
+      ],
+      "project": {
+        "id": 1,
+        "name": "AFRICA-Market",
+        "url": "https://www.azure-dev-ops.com/projects/1",
+        "visibility": "private"
+      }
+    }
+  ]
+  }],
+
+  "variableGroups": [{
+    "count": 3,
+    "value": [
+      {
+        "id": 1,
+        "name": "Deployer_DEV_BAI",
+        "project": {
+          "id": 101
+        },
+        "variables": {
+          "ArtifactsFeed": {
+           "value": ""} ,
+          "BuildConfiguration": {
+           "value": ""} ,
+          "BuildPlatform": {
+           "value": ""} ,
+          "FolderBins": {
+           "value": ""} ,
+          "FolderExtensions": {
+           "value": ""} ,
+          "GitCmdFolder": {
+           "value": ""} ,
+          "MsbuildArgs": {
+           "value": ""} ,
+          "PathImplementation": {
+           "value": ""} ,
+          "PublishTargetFolder": {
+           "value": ""} ,
+          "ReferencePath": {
+           "value": ""} ,
+          "ReferencePathBin": {
+           "value": ""} ,
+          "ReferencePathRptServer": {
+           "value": ""} ,
+          "SolutionImplementation": {
+           "value": ""} ,
+          "SonarQubeConnection": {
+           "value": ""} ,
+          "SonarQubeKey": {
+          "value": ""}
+        }
+      },
+      {
+        "id": 2,
+        "name": "Deployer_Email_BAI",
+        "project": {
+          "id": 1
+        },
+        "variables": {
+          
+          "EmailCC": {
+            "value": ""
+          },
+          "EmailTo": {
+            "value": "ruben.teles@vtxrm.com"
+          },
+          "ProjectName": {
+            "value": "BAI"
+          },
+          "SMTP_PASSWORD_SECRET": {
+            "value": null,
+            "isSecret": true
+          },
+          "SMTP_USERNAME_SECRET": {
+            "value": null,
+            "isSecret": true
+          },
+          "SmtpServer": {
+            "value": ""
+          }
+        }
+      },
+      {
+        "id": 105,
+        "name": "BAI_Variables_Environment",  
+        "project": {
+          "id": 1
+        },
+        "variables": {
+          "ArtifactsFeed": {
+           "value": ""} ,
+          "BuildConfiguration": {
+           "value": ""} ,
+          "BuildPlatform": {
+           "value": ""} ,
+          "FolderBins": {
+           "value": ""} ,
+          "FolderExtensions": {
+           "value": ""} ,
+          "GitCmdFolder": {
+           "value": ""} ,
+          "MsbuildArgs": {
+           "value": ""} ,
+          "PathImplementation": {
+           "value": ""} ,
+          "PublishTargetFolder": {
+           "value": ""} ,
+          "ReferencePath": {
+           "value": ""} ,
+          "ReferencePathBin": {
+           "value": ""} ,
+          "ReferencePathRptServer": {
+           "value": ""} ,
+          "SolutionImplementation": {
+           "value": ""} ,
+          "SonarQubeConnection": {
+           "value": ""} ,
+          "SonarQubeKey": {
+          "value": ""}
+        }
+      } 
+    ]
+  }
+
+
+],
+
+  "environments": [
+    {
+      "count": 3,
+      "value": [
+    {
+      "id": 1,
+      "name": "BAI_DEV_8082",
+
+      "project": {
+        "id": 1
+      },
+
+      "pipelines": [
+        {
+          "id": 1,
+          "authorized": true
+        },
+        {
+          "id": 2,
+          "authorized": true
+        },
+        {
+          "id": 3,
+          "authorized": true
+        }
+      ]
+    }
+    ]
+  }]
+}
